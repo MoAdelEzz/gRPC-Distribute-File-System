@@ -1,0 +1,32 @@
+syntax = "proto3";
+option go_package = "github.com/MoAdelEzz/gRPC-Distribute-File-System";
+package gRPC_DFS;
+
+message FileMetadata {
+    string name = 1;
+    int32 size = 2;
+    string FileState = 3;
+}
+
+message ResidentFilesRequest {
+
+}
+
+message FileTransferStateRequset {
+    string name = 1;
+}
+
+message ResidentFilesResponse {
+    repeated FileMetadata files = 1;
+    int32 available_space = 2;
+}
+
+message FileTransferStateResponse {
+    string status = 1;
+}
+
+
+service DatakeeperServices {
+    rpc GetResidentFiles( ResidentFilesRequest ) returns ( ResidentFilesResponse ) {}
+    rpc GetFileTransferState ( FileTransferStateRequset ) returns ( FileTransferStateResponse ) {}
+}

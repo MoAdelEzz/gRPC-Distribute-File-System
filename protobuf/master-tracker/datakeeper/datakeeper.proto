@@ -2,13 +2,6 @@ syntax = "proto3";
 option go_package = "github.com/MoAdelEzz/gRPC-Distribute-File-System";
 package gRPC_DFS;
 
-message GetSourceMachineRequest {
-    string filename = 1;
-}
-
-message GetSourceMachineResponse {
-    int32 port = 1;
-}
 
 // ==================================================
 
@@ -45,18 +38,8 @@ message HeartBeatResponse {
 
 // ==================================================
 
-message SelectMachineRequest {
-    int32 size = 1;
-    string filename = 2;
-}
 
-message SelectMachineResponse {
-    int32 port = 1;
-}
-
-service MasterTrackerServices {
-    rpc SelectMachineToCopyTo ( SelectMachineRequest ) returns ( SelectMachineResponse ) {};
-    rpc GetSourceMachine ( GetSourceMachineRequest ) returns ( GetSourceMachineResponse );
+service Master2DatakeeperServices {
     rpc RegisterFile ( RegisterFileRequest ) returns ( RegisterFileResponse );
     rpc SubscripeAsDataNode ( SubscripeAsDataNodeRequest ) returns ( SubscripeAsDataNodeResponse );
     rpc HeartBeat    ( HeartBeatRequest )    returns ( HeartBeatResponse) {}

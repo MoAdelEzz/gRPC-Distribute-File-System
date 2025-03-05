@@ -3,27 +3,38 @@ package main
 import (
 	"fmt"
 	"log"
-	"net"
 	"time"
+	"net"
 
-	mt "github.com/MoAdelEzz/gRPC-Distribute-File-System/services/master-tracker"
-	KeeperNodes "github.com/MoAdelEzz/gRPC-Distribute-File-System/common"
+	mt "github.com/MoAdelEzz/gRPC-Distribute-File-System/services"
+	cs "github.com/MoAdelEzz/gRPC-Distribute-File-System/services/master-tracker/client"
+	ks "github.com/MoAdelEzz/gRPC-Distribute-File-System/services/master-tracker/datakeeper"
+
+	utils "github.com/MoAdelEzz/gRPC-Distribute-File-System/common/master-tracker"
+
 	"google.golang.org/grpc"
+
+	"sync"
+	"os"
+	"github.com/joho/godotenv"
 )
 
-const DATA_KEEPER_PORT = ":8080";
-const CLIENTS_PORT = ":8081";
+
+var wg sync.WaitGroup
 
 func ListenToDataKeepers () {
-	lis, err := net.Listen("tcp", DATA_KEEPER_PORT);
+	defer wg.Done();
+
+	datakeepersPort := ":" + os.Getenv("MASTER_DATAKEEPERS_PORT")
+	lis, err := net.Listen("tcp", datakeepersPort);
 	if err != nil {
 		fmt.Println(err);
 		return;
 	}
 
 	grpcServer := grpc.NewServer();
-	mt.RegisterMasterTrackerServicesServer(grpcServer, &mt.MasterTrackerServer{});
-	fmt.Println("Server started. Listening on port 8080...")
+	ks.RegisterMaster2DatakeeperServicesServer(grpcServer, &mt.Master2DatakeeperServer{});
+	fmt.Println("Datakeepers Server started. Listening on port " + datakeepersPort + "...")
 
 	if err := grpcServer.Serve(lis); err != nil {
 		log.Fatalf("failed to serve: %v", err);
@@ -31,15 +42,18 @@ func ListenToDataKeepers () {
 }
 
 func ListenToClient () {
-	lis, err := net.Listen("tcp", CLIENTS_PORT);
+	defer wg.Done();
+	
+	clientsPort := ":" + os.Getenv("MASTER_CLIENTS_PORT")
+	lis, err := net.Listen("tcp", clientsPort);
 	if err != nil {
 		fmt.Println(err);
 		return;
 	}
 
 	grpcServer := grpc.NewServer();
-	mt.RegisterMasterTrackerServicesServer(grpcServer, &mt.MasterTrackerServer{});
-	fmt.Println("Server started. Listening on port 8081...")
+	cs.RegisterMaster2ClientServicesServer(grpcServer, &mt.Master2ClientServer{});
+	fmt.Println("Client Server started. Listening on port " + clientsPort + "...")
 
 	if err := grpcServer.Serve(lis); err != nil {
 		log.Fatalf("failed to serve: %v", err);
@@ -47,19 +61,26 @@ func ListenToClient () {
 }
 
 func WatchFileTransferState () {
+	defer wg.Done();
+
 	for {
-		time.Sleep(5 * time.Second)
-		KeeperNodes.AbortIdleFileTransfers();
-		println("Done Checking")
+		time.Sleep(10 * time.Second);
+		utils.DeAttachGhostedMachines();
+		utils.EraseAbortedTransfers();
 	}
 }
 
 func main() {
+	err := godotenv.Load()
+	if err != nil {
+		log.Fatalf("Error loading .env file: %v", err)
+	}
+
+	wg.Add(3);
+
 	go ListenToDataKeepers();
 	go ListenToClient();
 	go WatchFileTransferState();
 
-	for {
-		
-	}
+	wg.Wait();
 }

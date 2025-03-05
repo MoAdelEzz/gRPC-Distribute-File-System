@@ -1,9 +1,26 @@
 gen:
+	if not exist "services/master-tracker/client" mkdir "services/master-tracker/client"
+	if not exist "services/master-tracker/datakeeper" mkdir "services/master-tracker/datakeeper"
+	if not exist "services/master-tracker/datakeeper" mkdir "services/datakeeper"
 	@protoc \
-	  --proto_path=protobuf "protobuf/master-tracker.proto" \
-	  --go_out=services/master-tracker \
+	  --proto_path=protobuf "protobuf/master-tracker/client/client.proto" \
+	  --go_out=services \
 	  --go_opt=paths=source_relative \
-	  --go-grpc_out=services/master-tracker \
+	  --go-grpc_out=services \
+	  --go-grpc_opt=paths=source_relative
+
+	@protoc \
+	  --proto_path=protobuf "protobuf/master-tracker/datakeeper/datakeeper.proto" \
+	  --go_out=services \
+	  --go_opt=paths=source_relative \
+	  --go-grpc_out=services \
+	  --go-grpc_opt=paths=source_relative
+
+	@protoc \
+	  --proto_path=protobuf "protobuf/datakeeper/datakeeper.proto" \
+	  --go_out=services \
+	  --go_opt=paths=source_relative \
+	  --go-grpc_out=services \
 	  --go-grpc_opt=paths=source_relative
 
 
