@@ -4,99 +4,176 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"os"
 	"net"
+	"os"
+	"path/filepath"
 	"strconv"
-	"time"
 	"sync"
-	"io"
+	"time"
 
 	mt "github.com/MoAdelEzz/gRPC-Distribute-File-System/services/master-tracker/datakeeper"
 
-	dc 	"github.com/MoAdelEzz/gRPC-Distribute-File-System/services"
+	dc "github.com/MoAdelEzz/gRPC-Distribute-File-System/services"
 	dcs "github.com/MoAdelEzz/gRPC-Distribute-File-System/services/datakeeper"
+
+	Utils "github.com/MoAdelEzz/gRPC-Distribute-File-System/utils"
 
 	"github.com/joho/godotenv"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 )
 
+var available_space = 1000
+var name = ""
+var ctx context.Context = nil
 
-var available_space = 1000;
-var name = "";
-var ctx context.Context = nil;
+var mainBorder sync.WaitGroup
+var masterTrackerBorder sync.WaitGroup
 
-var mainBorder sync.WaitGroup;
-var masterTrackerBorder sync.WaitGroup;
+var MasterServices mt.Master2DatakeeperServicesClient
+
+var filesystem = make([]*mt.FileInfo, 0)
+
+func ReadFileSystem() {
+	if len(filesystem) == 0 {
+		directory := "fs"
+		files, err := os.ReadDir(directory)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		for _, file := range files {
+			if file.IsDir() {
+				continue
+			}
+
+			filePath := filepath.Join(directory, file.Name())
+			info, err := os.Stat(filePath)
+			if err != nil {
+				log.Fatal(err)
+				continue
+			}
+
+			name := file.Name()
+			size := info.Size()
+
+			fmt.Println(name, size)
+
+			filesystem = append(filesystem, &mt.FileInfo{
+				Name: name,
+				Size: int32(size),
+			})
+		}
+	}
+}
 
 func KeepalivePing(ctx context.Context, master *mt.Master2DatakeeperServicesClient) {
-	defer masterTrackerBorder.Done();
+	defer masterTrackerBorder.Done()
+
+	ReadFileSystem()
+	fileTransferPort, _ := strconv.Atoi(os.Getenv("DATAKEEPER_FILE_TRANSFER_PORT"))
 	for {
-		(*master).HeartBeat(ctx, &mt.HeartBeatRequest{TotalSpace: int32(available_space)});
-		time.Sleep(time.Second);
+		_, err := (*master).HeartBeat(ctx, &mt.HeartBeatRequest{
+			Files:            filesystem,
+			FileTransferPort: int32(fileTransferPort),
+		})
+		if err != nil {
+			fmt.Println("Error: ", err)
+			os.Exit(404)
+		}
+
+		time.Sleep(time.Second)
 	}
 }
 
-func MasterTrackerConnectionHandler() {
-	defer mainBorder.Done();
+func ConnectToMasterServices() {
+	defer mainBorder.Done()
 
 	masterAddr := os.Getenv("MASTER_IP") + ":" + os.Getenv("MASTER_DATAKEEPERS_PORT")
-	max_space, err := strconv.Atoi(os.Getenv("DATAKEEPER_MAX_CAPACITY"));
+	max_space, err := strconv.Atoi(os.Getenv("DATAKEEPER_MAX_CAPACITY"))
 	if err != nil {
-		max_space = 1000;
+		max_space = 1000
 	}
 
-	available_space = max_space;
+	available_space = max_space
 
-	conn, err := grpc.Dial(masterAddr, grpc.WithInsecure());
+	conn, err := grpc.Dial(masterAddr, grpc.WithInsecure())
 	if err != nil {
-		fmt.Println("did not connect:", err);
-		return;
+		fmt.Println("did not connect:", err)
+		return
 	}
-	defer conn.Close();
-
-	println(conn.Target());
-
-	MasterTracker := mt.NewMaster2DatakeeperServicesClient(conn);
-
-	masterTrackerBorder.Add(1);
-	go KeepalivePing(ctx, &MasterTracker);
-	masterTrackerBorder.Wait();
-}
-
-func handleFileTransferConnection(conn net.Conn) {
 	defer conn.Close()
-	buffer := make([]byte, 1024)
 
-	n, err := conn.Read(buffer)
-	if err != nil {
-		if err == io.EOF {
-			fmt.Println("Connection closed")
-		} else {
-			fmt.Println(err)
-		}
-		return
-	}
+	MasterServices = mt.NewMaster2DatakeeperServicesClient(conn)
+	go KeepalivePing(ctx, &MasterServices)
 
-	// write the buffer to some output file in this directory
-	file, err := os.Create(name + ".txt")
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-
-	_, err = file.Write(buffer[:n])
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-	defer file.Close()
+	masterTrackerBorder.Add(1)
+	masterTrackerBorder.Wait()
 }
 
-func ListenToClientFileTransfer () {
-	defer mainBorder.Done();
+func DataNodesFileTransfer() {
+	defer mainBorder.Done()
+}
 
-	listener, err := net.Listen("tcp", ":" + os.Getenv("DATAKEEPER_FILE_TRANSFER_PORT"))
+func HandleFileUpload(conn net.Conn) bool {
+	// Reading The File From Network
+	done, filename, byteCount := Utils.ReadFileFromNetwork("", &conn, "fs")
+
+	if !done {
+		fmt.Println("Error While Receiving File")
+		return false
+	}
+
+	// update the master tracker
+	resp, err := MasterServices.RegisterFile(ctx, &mt.RegisterFileRequest{
+		Filename: filename,
+		Filesize: int32(byteCount),
+	})
+
+	// notify the client
+	if err != nil || resp.StatusCode != 200 {
+		conn.Write([]byte("ERROR"))
+		conn.Read([]byte{})
+		fmt.Println(err)
+		return false
+	}
+
+	return true
+}
+
+func HandleFileDownload(conn net.Conn) bool {
+	n, buffer := Utils.ReadChunck(&conn)
+	filename := string(buffer[:n])
+	path := "fs/" + filename
+
+	done, _ := Utils.WriteFileToNetwork(path, &conn, false)
+	if !done {
+		fmt.Println("Error While Sending File")
+		return false
+	}
+
+	return true
+}
+
+func ClientsFileTransfer(conn net.Conn) bool {
+	defer conn.Close()
+
+	n, buffer := Utils.ReadChunck(&conn)
+
+	if string(buffer[:n]) == "UPLOAD" {
+		HandleFileUpload(conn)
+	} else {
+		HandleFileDownload(conn)
+	}
+
+	Utils.WriteChunck(&conn, []byte("ACK"))
+	return true
+}
+
+func ListenToClientFileTransfer() {
+	defer mainBorder.Done()
+
+	listener, err := net.Listen("tcp", ":"+os.Getenv("DATAKEEPER_FILE_TRANSFER_PORT"))
 	if err != nil {
 		fmt.Println(err)
 		return
@@ -110,46 +187,46 @@ func ListenToClientFileTransfer () {
 			return
 		}
 
-		go handleFileTransferConnection(conn)
+		go ClientsFileTransfer(conn)
 	}
 }
 
-func StartServicesServer () {
-	defer mainBorder.Done();
+func StartDatanodeServices() {
+	defer mainBorder.Done()
 
 	datakeepersServicesPort := ":" + os.Getenv("DATAKEEPER_SERVICES_PORT")
-	lis, err := net.Listen("tcp", datakeepersServicesPort);
+	lis, err := net.Listen("tcp", datakeepersServicesPort)
 	if err != nil {
-		fmt.Println(err);
-		return;
+		fmt.Println(err)
+		return
 	}
 
-	grpcServer := grpc.NewServer();
-	dcs.RegisterDatakeeperServicesServer(grpcServer, &dc.Datakeeper2MasterServer{});
+	grpcServer := grpc.NewServer()
+	dcs.RegisterDatakeeperServicesServer(grpcServer, &dc.Datakeeper2MasterServer{})
 	fmt.Println("Datakeepers Services Server started. Listening on port " + datakeepersServicesPort + "...")
 
 	if err := grpcServer.Serve(lis); err != nil {
-		log.Fatalf("failed to serve: %v", err);
+		log.Fatalf("failed to serve: %v", err)
 	}
 }
 
 func main() {
 	if len(os.Args) > 1 {
-		name = os.Args[1];
+		name = os.Args[1]
 	}
 
 	err := godotenv.Load()
 	if err != nil {
 		log.Fatalf("Error loading .env file: %v", err)
 	}
-	
-	md := metadata.Pairs("nodeName", name)
-	ctx = metadata.NewOutgoingContext(context.Background(), md);
 
-	mainBorder.Add(3);
-	go MasterTrackerConnectionHandler();
-	go ListenToClientFileTransfer();
-	go StartServicesServer();
-	mainBorder.Wait();
-	
+	md := metadata.Pairs("nodeName", name)
+	ctx = metadata.NewOutgoingContext(context.Background(), md)
+
+	mainBorder.Add(3)
+	go StartDatanodeServices()
+	go ConnectToMasterServices()
+	go ListenToClientFileTransfer()
+	mainBorder.Wait()
+
 }

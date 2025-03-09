@@ -5,13 +5,13 @@ import (
 	"log"
 	"os"
 
-	DC2MS "github.com/MoAdelEzz/gRPC-Distribute-File-System/services/datakeeper"
-	common "github.com/MoAdelEzz/gRPC-Distribute-File-System/common"
+	keeperServices "github.com/MoAdelEzz/gRPC-Distribute-File-System/services/datakeeper"
+	Utils "github.com/MoAdelEzz/gRPC-Distribute-File-System/utils"
 )
 
 type FileTransferInstance struct {
 	name string
-	status common.FileState
+	status Utils.FileState
 }
 
 type FileMetadata struct {
@@ -22,33 +22,18 @@ type FileMetadata struct {
 var transfers = make(map[string]FileTransferInstance);
 var residentFiles []FileMetadata;
 
-func _GetFile(name string) FileMetadata {
-	directory := "fs";
-	filePath := filepath.Join(directory, name);
-
-	info, err := os.Stat(filePath) // Get file metadata
-	if err != nil {
-		log.Println("Error getting file info:", err)
-	}
-
-	return FileMetadata{
-		name: name,
-		size: int(info.Size()),
-	}
-}
-
-func GetResidentFiles() []*DC2MS.FileMetadata {
+func GetResidentFiles() []*keeperServices.FileMetadata {
 	if len(residentFiles) == 0 {
 		residentFiles = LoadResidentFiles();
 	}
 
-	files := make([]*DC2MS.FileMetadata, 0, len(residentFiles));
+	files := make([]*keeperServices.FileMetadata, 0, len(residentFiles));
 
 	for _, file := range residentFiles {
-		files = append(files, &DC2MS.FileMetadata{
+		files = append(files, &keeperServices.FileMetadata{
 			Name: file.name,
 			Size: int32(file.size),
-			FileState: string(common.RESIDENT),
+			FileState: string(Utils.RESIDENT),
 		})
 	}
 
@@ -86,31 +71,22 @@ func LoadResidentFiles() []FileMetadata {
 	return residentFiles;
 }
 
-func GetFileTransferState(name string) *DC2MS.FileTransferStateResponse {
+func GetFileTransferState(name string) *keeperServices.FileTransferStateResponse {
 	if _, ok := transfers[name]; !ok {
-		return &DC2MS.FileTransferStateResponse{
+		return &keeperServices.FileTransferStateResponse{
 			Status: string(transfers[name].status),
 		}
 	}
 
-	return &DC2MS.FileTransferStateResponse{
-		Status: string(common.RESIDENT),
+	return &keeperServices.FileTransferStateResponse{
+		Status: string(Utils.RESIDENT),
 	}
-}
-
-func FinishFileTransfer(name string) {
-	transfers[name] = FileTransferInstance{
-		name: name, 
-		status: common.RESIDENT,
-	};
-
-	residentFiles = append(residentFiles, _GetFile(name));
 }
 
 func AbortFileTransfer(name string) {
 	transfers[name] = FileTransferInstance{
 		name: name, 
-		status: common.ABORTED,
+		status: Utils.ABORTED,
 	};
 }
 

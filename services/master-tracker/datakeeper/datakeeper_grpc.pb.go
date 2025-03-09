@@ -19,9 +19,8 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	Master2DatakeeperServices_RegisterFile_FullMethodName        = "/gRPC_DFS.Master2DatakeeperServices/RegisterFile"
-	Master2DatakeeperServices_SubscripeAsDataNode_FullMethodName = "/gRPC_DFS.Master2DatakeeperServices/SubscripeAsDataNode"
-	Master2DatakeeperServices_HeartBeat_FullMethodName           = "/gRPC_DFS.Master2DatakeeperServices/HeartBeat"
+	Master2DatakeeperServices_RegisterFile_FullMethodName = "/gRPC_DFS.Master2DatakeeperServices/RegisterFile"
+	Master2DatakeeperServices_HeartBeat_FullMethodName    = "/gRPC_DFS.Master2DatakeeperServices/HeartBeat"
 )
 
 // Master2DatakeeperServicesClient is the client API for Master2DatakeeperServices service.
@@ -29,7 +28,6 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type Master2DatakeeperServicesClient interface {
 	RegisterFile(ctx context.Context, in *RegisterFileRequest, opts ...grpc.CallOption) (*RegisterFileResponse, error)
-	SubscripeAsDataNode(ctx context.Context, in *SubscripeAsDataNodeRequest, opts ...grpc.CallOption) (*SubscripeAsDataNodeResponse, error)
 	HeartBeat(ctx context.Context, in *HeartBeatRequest, opts ...grpc.CallOption) (*HeartBeatResponse, error)
 }
 
@@ -51,16 +49,6 @@ func (c *master2DatakeeperServicesClient) RegisterFile(ctx context.Context, in *
 	return out, nil
 }
 
-func (c *master2DatakeeperServicesClient) SubscripeAsDataNode(ctx context.Context, in *SubscripeAsDataNodeRequest, opts ...grpc.CallOption) (*SubscripeAsDataNodeResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(SubscripeAsDataNodeResponse)
-	err := c.cc.Invoke(ctx, Master2DatakeeperServices_SubscripeAsDataNode_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
 func (c *master2DatakeeperServicesClient) HeartBeat(ctx context.Context, in *HeartBeatRequest, opts ...grpc.CallOption) (*HeartBeatResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(HeartBeatResponse)
@@ -76,7 +64,6 @@ func (c *master2DatakeeperServicesClient) HeartBeat(ctx context.Context, in *Hea
 // for forward compatibility.
 type Master2DatakeeperServicesServer interface {
 	RegisterFile(context.Context, *RegisterFileRequest) (*RegisterFileResponse, error)
-	SubscripeAsDataNode(context.Context, *SubscripeAsDataNodeRequest) (*SubscripeAsDataNodeResponse, error)
 	HeartBeat(context.Context, *HeartBeatRequest) (*HeartBeatResponse, error)
 	mustEmbedUnimplementedMaster2DatakeeperServicesServer()
 }
@@ -90,9 +77,6 @@ type UnimplementedMaster2DatakeeperServicesServer struct{}
 
 func (UnimplementedMaster2DatakeeperServicesServer) RegisterFile(context.Context, *RegisterFileRequest) (*RegisterFileResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method RegisterFile not implemented")
-}
-func (UnimplementedMaster2DatakeeperServicesServer) SubscripeAsDataNode(context.Context, *SubscripeAsDataNodeRequest) (*SubscripeAsDataNodeResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method SubscripeAsDataNode not implemented")
 }
 func (UnimplementedMaster2DatakeeperServicesServer) HeartBeat(context.Context, *HeartBeatRequest) (*HeartBeatResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method HeartBeat not implemented")
@@ -137,24 +121,6 @@ func _Master2DatakeeperServices_RegisterFile_Handler(srv interface{}, ctx contex
 	return interceptor(ctx, in, info, handler)
 }
 
-func _Master2DatakeeperServices_SubscripeAsDataNode_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(SubscripeAsDataNodeRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(Master2DatakeeperServicesServer).SubscripeAsDataNode(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: Master2DatakeeperServices_SubscripeAsDataNode_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(Master2DatakeeperServicesServer).SubscripeAsDataNode(ctx, req.(*SubscripeAsDataNodeRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
 func _Master2DatakeeperServices_HeartBeat_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(HeartBeatRequest)
 	if err := dec(in); err != nil {
@@ -183,10 +149,6 @@ var Master2DatakeeperServices_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "RegisterFile",
 			Handler:    _Master2DatakeeperServices_RegisterFile_Handler,
-		},
-		{
-			MethodName: "SubscripeAsDataNode",
-			Handler:    _Master2DatakeeperServices_SubscripeAsDataNode_Handler,
 		},
 		{
 			MethodName: "HeartBeat",

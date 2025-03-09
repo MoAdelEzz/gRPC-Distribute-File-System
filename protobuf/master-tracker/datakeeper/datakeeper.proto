@@ -14,22 +14,16 @@ message RegisterFileResponse {
     int32 statusCode = 1;
 }
 
-
 // ==================================================
 
-message SubscripeAsDataNodeRequest {
-
+message FileInfo {
+    string name = 1;
+    int32 size = 2;
 }
-
-message SubscripeAsDataNodeResponse {
-    int32 statusCode = 1;
-}
-
-
-// ==================================================
 
 message HeartBeatRequest {
-    int32 total_space = 1;
+    repeated FileInfo files = 1;
+    int32 fileTransferPort = 2;
 }
 
 message HeartBeatResponse {
@@ -41,6 +35,5 @@ message HeartBeatResponse {
 
 service Master2DatakeeperServices {
     rpc RegisterFile ( RegisterFileRequest ) returns ( RegisterFileResponse );
-    rpc SubscripeAsDataNode ( SubscripeAsDataNodeRequest ) returns ( SubscripeAsDataNodeResponse );
     rpc HeartBeat    ( HeartBeatRequest )    returns ( HeartBeatResponse) {}
 }
