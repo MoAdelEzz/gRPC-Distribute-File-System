@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net"
@@ -11,6 +12,7 @@ import (
 	"google.golang.org/grpc"
 
 	MasterTracker "github.com/MoAdelEzz/gRPC-Distribute-File-System/services"
+	KeeperMasterServices "github.com/MoAdelEzz/gRPC-Distribute-File-System/services/datakeeper"
 	MasterClientServices "github.com/MoAdelEzz/gRPC-Distribute-File-System/services/master-tracker/client"
 	MasterKeeperServices "github.com/MoAdelEzz/gRPC-Distribute-File-System/services/master-tracker/datakeeper"
 	MasterUtils "github.com/MoAdelEzz/gRPC-Distribute-File-System/utils/master-tracker"
@@ -69,6 +71,45 @@ func WatchDatakeepersState() {
 
 func ReplicateFiles() {
 	defer MainSyncGroup.Done()
+
+	for {
+		println("Started File Replication Check")
+
+		filesToReplicate := MasterUtils.GetFilesToReplicate()
+
+		if len(filesToReplicate) == 0 {
+			println("No Files To Replicate")
+		} else {
+			println("Files To Replicate: ")
+
+			for _, file := range filesToReplicate {
+				println(file)
+			}
+		}
+
+		for _, file := range filesToReplicate {
+			fromMachine, toMachine := MasterUtils.GetMachineToReplicate(file)
+			if fromMachine == nil {
+				println("No Available Machine To Replicate To")
+				break
+			}
+
+			resp, err := fromMachine.ReplicateTo(context.Background(), &KeeperMasterServices.ReplicateRequest{
+				Filename: file,
+				To:       toMachine,
+			})
+
+			if err != nil || resp.Ok == false {
+				println("Error Replicating File: ", err)
+				break
+			}
+
+			MasterUtils.RegisterReplicateComplete(toMachine, file)
+		}
+
+		time.Sleep(10 * time.Second)
+	}
+
 }
 
 func main() {

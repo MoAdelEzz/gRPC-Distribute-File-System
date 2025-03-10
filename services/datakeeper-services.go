@@ -30,7 +30,7 @@ func (s *Master2DatakeeperServer) HeartBeat(ctx context.Context, req *M2DCS.Hear
 	p, ok := peer.FromContext(ctx)
 	md, ok2 := metadata.FromIncomingContext(ctx)
 	if ok && ok2 {
-		log.Printf("Received Heartbeat from %v", p.Addr.String())
+		// log.Printf("Received Heartbeat from %v", p.Addr.String())
 		KeeperNodes.RegisterHeartBeat(p.Addr.String(), md.Get("nodeName")[0], req)
 		return &M2DCS.HeartBeatResponse{StatusCode: 200}, nil
 	} else {

@@ -6,6 +6,7 @@ import (
 	"log"
 	"net"
 	"os"
+	"path/filepath"
 )
 
 const (
@@ -76,7 +77,6 @@ func WriteChunck(conn *net.Conn, buffer []byte) int {
 		fmt.Println(err)
 		return 0
 	}
-	fmt.Println("ACK = ", string(ack[:n]))
 	return n
 }
 
@@ -130,6 +130,7 @@ func ReadFileFromNetwork(filename string, conn *net.Conn, folder string) (bool, 
 	file, err := os.Create(folder + "/" + filename)
 	if err != nil {
 		fmt.Println("OS Error")
+		fmt.Println(err)
 		return false, "", -1
 	}
 	defer file.Close()
@@ -149,17 +150,16 @@ func ReadFileFromNetwork(filename string, conn *net.Conn, folder string) (bool, 
 
 	return true, filename, byteCount
 }
-
-func WriteFileToNetwork(filename string, conn *net.Conn, sendName bool) (bool, int) {
-	file := OpenFile(filename)
+func WriteFileToNetwork(path string, conn *net.Conn, sendName bool) (bool, int) {
+	file := OpenFile(path)
 	defer file.Close()
 
 	if sendName {
-		WriteChunck(conn, []byte(filename))
+		WriteChunck(conn, []byte(filepath.Base(path)))
 	}
 
 	byteWritten := 0
-	nextChunk, closeFile := FileReader(filename, 1024)
+	nextChunk, closeFile := FileReader(path, 1024)
 	defer closeFile()
 
 	for {
@@ -171,8 +171,6 @@ func WriteFileToNetwork(filename string, conn *net.Conn, sendName bool) (bool, i
 			}
 			return false, byteWritten
 		}
-		println(string(buffer))
-		println("==============")
 		byteWritten += WriteChunck(conn, buffer)
 	}
 

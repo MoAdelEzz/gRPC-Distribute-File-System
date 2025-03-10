@@ -19,17 +19,16 @@ type Master2ClientServer struct {
 func (s *Master2ClientServer) SelectMachineToCopyTo(ctx context.Context, req *MasterClientServices.SelectMachineRequest) (*MasterClientServices.SelectMachineResponse, error) {
 	log.Printf("Received Select Machine Request")
 
-	machineKey, FileTransferPort := KeeperNodes.GetSuitableMachine(req.Filename, int(req.Size))
-	ip, _ := KeeperNodes.ResolveAddress(machineKey)
+	machineIp, FileTransferPort := KeeperNodes.GetSuitableMachine(req.Filename, int(req.Size))
 
-	if machineKey == Utils.FILE_EXISTS ||
-		machineKey == Utils.NO_AVAILABLE_DATA_KEEPER {
-		return nil, errors.New(machineKey)
+	if machineIp == Utils.FILE_EXISTS ||
+		machineIp == Utils.NO_AVAILABLE_DATA_KEEPER {
+		return nil, errors.New(machineIp)
 	} else if FileTransferPort == -1 {
 		return nil, errors.New("invalid port")
 	} else {
-		KeeperNodes.RegisterFileTransferStart(machineKey, req.Filename)
-		return &MasterClientServices.SelectMachineResponse{Ip: ip, Port: FileTransferPort}, nil
+		KeeperNodes.RegisterFileTransferStart(machineIp, req.Filename)
+		return &MasterClientServices.SelectMachineResponse{Ip: machineIp, Port: FileTransferPort}, nil
 	}
 }
 

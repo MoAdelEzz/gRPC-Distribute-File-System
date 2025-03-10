@@ -1,16 +1,17 @@
 package Utils
 
 import (
-	"path/filepath"
 	"log"
 	"os"
+	"path/filepath"
 
 	keeperServices "github.com/MoAdelEzz/gRPC-Distribute-File-System/services/datakeeper"
+	MasterTrackerServices "github.com/MoAdelEzz/gRPC-Distribute-File-System/services/master-tracker/datakeeper"
 	Utils "github.com/MoAdelEzz/gRPC-Distribute-File-System/utils"
 )
 
 type FileTransferInstance struct {
-	name string
+	name   string
 	status Utils.FileState
 }
 
@@ -19,56 +20,50 @@ type FileMetadata struct {
 	size int
 }
 
-var transfers = make(map[string]FileTransferInstance);
-var residentFiles []FileMetadata;
+var transfers = make(map[string]FileTransferInstance)
+var filesystem = make(map[string]int)
 
-func GetResidentFiles() []*keeperServices.FileMetadata {
-	if len(residentFiles) == 0 {
-		residentFiles = LoadResidentFiles();
-	}
-
-	files := make([]*keeperServices.FileMetadata, 0, len(residentFiles));
-
-	for _, file := range residentFiles {
-		files = append(files, &keeperServices.FileMetadata{
-			Name: file.name,
-			Size: int32(file.size),
-			FileState: string(Utils.RESIDENT),
-		})
-	}
-
-	return files;
-}
-
-func LoadResidentFiles() []FileMetadata {
-	directory := "fs";
-	files, err := os.ReadDir(directory)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	for _, file := range files {
-		if file.IsDir() {
-			continue
-		}
-
-		filePath := filepath.Join(directory, file.Name())
-		info, err := os.Stat(filePath)
+func ReadFileSystem() []*MasterTrackerServices.FileInfo {
+	if len(filesystem) == 0 {
+		directory := "fs"
+		files, err := os.ReadDir(directory)
 		if err != nil {
 			log.Fatal(err)
-			continue
 		}
 
-		name := file.Name()
-		size := info.Size()
+		for _, file := range files {
+			if file.IsDir() {
+				continue
+			}
 
-		residentFiles = append(residentFiles, FileMetadata{
-			name: name,
-			size: int(size),
-		})
+			filePath := filepath.Join(directory, file.Name())
+			info, err := os.Stat(filePath)
+			if err != nil {
+				log.Fatal(err)
+				continue
+			}
+
+			name := file.Name()
+			size := info.Size()
+			filesystem[name] = int(size)
+		}
 	}
 
-	return residentFiles;
+	residentFiles := []*MasterTrackerServices.FileInfo{}
+	for filename, size := range filesystem {
+		residentFiles = append(residentFiles, &MasterTrackerServices.FileInfo{
+			Name: filename,
+			Size: int32(size),
+		})
+	}
+	return residentFiles
+}
+
+func AppendFileToSystem(name string, size int) {
+	if _, ok := filesystem[name]; ok {
+		return
+	}
+	filesystem[name] = size
 }
 
 func GetFileTransferState(name string) *keeperServices.FileTransferStateResponse {
@@ -85,8 +80,12 @@ func GetFileTransferState(name string) *keeperServices.FileTransferStateResponse
 
 func AbortFileTransfer(name string) {
 	transfers[name] = FileTransferInstance{
-		name: name, 
+		name:   name,
 		status: Utils.ABORTED,
-	};
+	}
 }
 
+func IsFileExists(filename string) bool {
+	_, ok := filesystem[filename]
+	return ok
+}

@@ -19,16 +19,16 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	DatakeeperServices_GetResidentFiles_FullMethodName     = "/gRPC_DFS.DatakeeperServices/GetResidentFiles"
 	DatakeeperServices_GetFileTransferState_FullMethodName = "/gRPC_DFS.DatakeeperServices/GetFileTransferState"
+	DatakeeperServices_ReplicateTo_FullMethodName          = "/gRPC_DFS.DatakeeperServices/ReplicateTo"
 )
 
 // DatakeeperServicesClient is the client API for DatakeeperServices service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type DatakeeperServicesClient interface {
-	GetResidentFiles(ctx context.Context, in *ResidentFilesRequest, opts ...grpc.CallOption) (*ResidentFilesResponse, error)
 	GetFileTransferState(ctx context.Context, in *FileTransferStateRequset, opts ...grpc.CallOption) (*FileTransferStateResponse, error)
+	ReplicateTo(ctx context.Context, in *ReplicateRequest, opts ...grpc.CallOption) (*ReplicateResponse, error)
 }
 
 type datakeeperServicesClient struct {
@@ -37,16 +37,6 @@ type datakeeperServicesClient struct {
 
 func NewDatakeeperServicesClient(cc grpc.ClientConnInterface) DatakeeperServicesClient {
 	return &datakeeperServicesClient{cc}
-}
-
-func (c *datakeeperServicesClient) GetResidentFiles(ctx context.Context, in *ResidentFilesRequest, opts ...grpc.CallOption) (*ResidentFilesResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(ResidentFilesResponse)
-	err := c.cc.Invoke(ctx, DatakeeperServices_GetResidentFiles_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
 }
 
 func (c *datakeeperServicesClient) GetFileTransferState(ctx context.Context, in *FileTransferStateRequset, opts ...grpc.CallOption) (*FileTransferStateResponse, error) {
@@ -59,12 +49,22 @@ func (c *datakeeperServicesClient) GetFileTransferState(ctx context.Context, in 
 	return out, nil
 }
 
+func (c *datakeeperServicesClient) ReplicateTo(ctx context.Context, in *ReplicateRequest, opts ...grpc.CallOption) (*ReplicateResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ReplicateResponse)
+	err := c.cc.Invoke(ctx, DatakeeperServices_ReplicateTo_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // DatakeeperServicesServer is the server API for DatakeeperServices service.
 // All implementations must embed UnimplementedDatakeeperServicesServer
 // for forward compatibility.
 type DatakeeperServicesServer interface {
-	GetResidentFiles(context.Context, *ResidentFilesRequest) (*ResidentFilesResponse, error)
 	GetFileTransferState(context.Context, *FileTransferStateRequset) (*FileTransferStateResponse, error)
+	ReplicateTo(context.Context, *ReplicateRequest) (*ReplicateResponse, error)
 	mustEmbedUnimplementedDatakeeperServicesServer()
 }
 
@@ -75,11 +75,11 @@ type DatakeeperServicesServer interface {
 // pointer dereference when methods are called.
 type UnimplementedDatakeeperServicesServer struct{}
 
-func (UnimplementedDatakeeperServicesServer) GetResidentFiles(context.Context, *ResidentFilesRequest) (*ResidentFilesResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method GetResidentFiles not implemented")
-}
 func (UnimplementedDatakeeperServicesServer) GetFileTransferState(context.Context, *FileTransferStateRequset) (*FileTransferStateResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetFileTransferState not implemented")
+}
+func (UnimplementedDatakeeperServicesServer) ReplicateTo(context.Context, *ReplicateRequest) (*ReplicateResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ReplicateTo not implemented")
 }
 func (UnimplementedDatakeeperServicesServer) mustEmbedUnimplementedDatakeeperServicesServer() {}
 func (UnimplementedDatakeeperServicesServer) testEmbeddedByValue()                            {}
@@ -102,24 +102,6 @@ func RegisterDatakeeperServicesServer(s grpc.ServiceRegistrar, srv DatakeeperSer
 	s.RegisterService(&DatakeeperServices_ServiceDesc, srv)
 }
 
-func _DatakeeperServices_GetResidentFiles_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(ResidentFilesRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(DatakeeperServicesServer).GetResidentFiles(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: DatakeeperServices_GetResidentFiles_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(DatakeeperServicesServer).GetResidentFiles(ctx, req.(*ResidentFilesRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
 func _DatakeeperServices_GetFileTransferState_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(FileTransferStateRequset)
 	if err := dec(in); err != nil {
@@ -138,6 +120,24 @@ func _DatakeeperServices_GetFileTransferState_Handler(srv interface{}, ctx conte
 	return interceptor(ctx, in, info, handler)
 }
 
+func _DatakeeperServices_ReplicateTo_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ReplicateRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DatakeeperServicesServer).ReplicateTo(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DatakeeperServices_ReplicateTo_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DatakeeperServicesServer).ReplicateTo(ctx, req.(*ReplicateRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // DatakeeperServices_ServiceDesc is the grpc.ServiceDesc for DatakeeperServices service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -146,12 +146,12 @@ var DatakeeperServices_ServiceDesc = grpc.ServiceDesc{
 	HandlerType: (*DatakeeperServicesServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
-			MethodName: "GetResidentFiles",
-			Handler:    _DatakeeperServices_GetResidentFiles_Handler,
-		},
-		{
 			MethodName: "GetFileTransferState",
 			Handler:    _DatakeeperServices_GetFileTransferState_Handler,
+		},
+		{
+			MethodName: "ReplicateTo",
+			Handler:    _DatakeeperServices_ReplicateTo_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

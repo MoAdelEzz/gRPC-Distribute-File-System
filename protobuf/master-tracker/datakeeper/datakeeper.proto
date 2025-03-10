@@ -24,6 +24,7 @@ message FileInfo {
 message HeartBeatRequest {
     repeated FileInfo files = 1;
     int32 fileTransferPort = 2;
+    int32 replicatePort = 3;
 }
 
 message HeartBeatResponse {

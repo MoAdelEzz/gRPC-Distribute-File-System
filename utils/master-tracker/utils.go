@@ -3,6 +3,7 @@ package Utils
 import (
 	"context"
 	"fmt"
+	"math/rand"
 	"os"
 	"strconv"
 	"strings"
@@ -16,33 +17,17 @@ import (
 )
 
 type DataKeeper struct {
-	last_seen              time.Time
-	name                   string
-	filesystem             []*mt.FileInfo
-	clientFileTransferPort int32
-}
-
-type FileLocation struct {
-	ip   string
-	port int
+	last_seen                 time.Time
+	name                      string
+	filesystem                []*mt.FileInfo
+	clientFileTransferPort    int32
+	replicateFileTransferPort int32
+	services                  dc.DatakeeperServicesClient
 }
 
 var datakeepers = make(map[string]DataKeeper) // the string will be ip:port
 var inverseFileLookup = make(map[string]map[string]bool)
 var ongoingTransfers = make(map[string][]string)
-var unscannedMachines = make([]string, 0)
-
-func GetUnscannedMachines() []string {
-	return unscannedMachines
-}
-
-func GetAvailableSpace(key string) int {
-	size := 0
-	for _, file := range datakeepers[key].filesystem {
-		size += int(file.Size)
-	}
-	return size
-}
 
 func ResolveAddress(key string) (string, int) {
 	if key == "" {
@@ -63,10 +48,10 @@ func GetSuitableMachine(filename string, fileSize int) (string, int32) {
 		return Utils.FILE_EXISTS, -1
 	}
 
-	for key, node := range datakeepers {
+	for ip, node := range datakeepers {
 		// TODO: change this
 		if fileSize > 0 {
-			return key, node.clientFileTransferPort
+			return ip, node.clientFileTransferPort
 		}
 	}
 
@@ -83,62 +68,83 @@ func removeValue(slice []string, value string) []string {
 	return newSlice
 }
 
+func RegisterFileTransferStart(ip string, filename string) {
+	fmt.Println("Registering transfer ", filename, " to ", ip)
+	ongoingTransfers[ip] = append(ongoingTransfers[ip], filename)
+}
+
 func RegisterFileTransferComplete(key string, filename string) {
-	ongoingTransfers[key] = removeValue(ongoingTransfers[key], filename)
+	ip, _ := ResolveAddress(key)
+
+	ongoingTransfers[ip] = removeValue(ongoingTransfers[ip], filename)
+	if _, ok := inverseFileLookup[filename]; !ok {
+		inverseFileLookup[filename] = make(map[string]bool)
+	}
+	inverseFileLookup[filename][ip] = true
+}
+
+func RegisterReplicateComplete(key string, filename string) {
+	ip, _ := ResolveAddress(key)
+
+	println("Registering replicate ", filename, " to ", ip)
 
 	if _, ok := inverseFileLookup[filename]; !ok {
 		inverseFileLookup[filename] = make(map[string]bool)
 	}
-	inverseFileLookup[filename][key] = true
+	inverseFileLookup[filename][ip] = true
 }
 
-func RegisterHeartBeat(key string, nodeName string, req *mt.HeartBeatRequest) {
+func RegisterHeartBeat(address string, nodeName string, req *mt.HeartBeatRequest) {
+	var DataKeeperServices dc.DatakeeperServicesClient
+	ip, _ := ResolveAddress(address)
 
-	datakeepers[key] = DataKeeper{
-		name:                   nodeName,
-		filesystem:             req.Files,
-		last_seen:              time.Now(),
-		clientFileTransferPort: req.FileTransferPort,
+	if _, ok := datakeepers[ip]; ok {
+		DataKeeperServices = datakeepers[ip].services
+	} else {
+		port := os.Getenv("DATAKEEPER_SERVICES_PORT")
+		conn, err := grpc.Dial(ip+":"+port, grpc.WithInsecure())
+		if err != nil {
+			fmt.Println("did not connect:", err)
+			DataKeeperServices = nil
+		} else {
+			DataKeeperServices = dc.NewDatakeeperServicesClient(conn)
+		}
 	}
 
-	println("Machine ", datakeepers[key].clientFileTransferPort, " has been registered")
-
-	ip, _ := ResolveAddress(key)
+	datakeepers[ip] = DataKeeper{
+		name:                      nodeName,
+		filesystem:                req.Files,
+		last_seen:                 time.Now(),
+		clientFileTransferPort:    req.FileTransferPort,
+		replicateFileTransferPort: req.ReplicatePort,
+		services:                  DataKeeperServices,
+	}
 
 	for _, file := range req.Files {
-		nodeKey := ip + ":" + strconv.Itoa(int(req.FileTransferPort))
-
 		if _, ok := inverseFileLookup[file.Name]; !ok {
 			inverseFileLookup[file.Name] = make(map[string]bool)
 		}
-		inverseFileLookup[file.Name][nodeKey] = true
+		inverseFileLookup[file.Name][ip] = true
 	}
 }
 
-func RegisterFileTransferStart(key string, filename string) {
-	fmt.Println("Registering transfer ", filename, " to ", key)
-	ongoingTransfers[key] = append(ongoingTransfers[key], filename)
-}
-
 func DeAttachGhostedMachines() {
-	for key, value := range datakeepers {
+	for ip, value := range datakeepers {
 		if time.Since(value.last_seen) > time.Second+10*time.Millisecond {
-			fmt.Println("Machine ", key, " has gone offline")
-			delete(datakeepers, key)
+			fmt.Println("Machine ", ip, " has gone offline")
+			delete(datakeepers, ip)
 		}
 	}
 }
 
 func EraseAbortedTransfers() {
-	for machineAddr, filenames := range ongoingTransfers {
+	for ip, filenames := range ongoingTransfers {
 		for _, filename := range filenames {
-			if _, ok := datakeepers[machineAddr]; !ok {
-				fmt.Println("uploading file ", filename, " to machine ", machineAddr, " has been aborted")
-				delete(ongoingTransfers, machineAddr)
+			if _, ok := datakeepers[ip]; !ok {
+				fmt.Println("uploading file ", filename, " to machine ", ip, " has been aborted")
+				delete(ongoingTransfers, ip)
 				continue
 			}
-
-			ip, _ := ResolveAddress(machineAddr)
 
 			conn, err := grpc.Dial(ip+":"+os.Getenv("DATAKEEPER_SERVICES_PORT"), grpc.WithInsecure())
 			if err != nil {
@@ -158,19 +164,19 @@ func EraseAbortedTransfers() {
 			}
 
 			if Utils.FileState(resp.Status) == Utils.ABORTED {
-				fmt.Println("uploading file ", filename, " to machine ", machineAddr, " has been aborted")
-				delete(ongoingTransfers, machineAddr)
+				fmt.Println("uploading file ", filename, " to machine ", ip, " has been aborted")
+				delete(ongoingTransfers, ip)
 			}
 		}
 	}
 }
 
 func RevalidateLookupTable() {
-	for filename, machineAddresses := range inverseFileLookup {
-		for address, _ := range machineAddresses {
+	for filename, machineIp := range inverseFileLookup {
+		for address, _ := range machineIp {
 			if _, ok := datakeepers[address]; !ok {
-				fmt.Println("file ", filename, " is no longer available on machine ", machineAddresses)
-				delete(machineAddresses, address)
+				fmt.Println("file ", filename, " is no longer available on machine ", machineIp)
+				delete(machineIp, address)
 			}
 		}
 	}
@@ -187,4 +193,39 @@ func GetSourceMachine(filename string) (string, int32) {
 	}
 
 	return "", -1
+}
+
+func GetFilesToReplicate() []string {
+	var files []string
+	for filename, machinesList := range inverseFileLookup {
+		if len(machinesList) == 0 {
+			delete(inverseFileLookup, filename)
+		}
+		if len(machinesList) < 2 {
+			files = append(files, filename)
+		}
+	}
+	return files
+}
+
+func GetMachineToReplicate(filename string) (dc.DatakeeperServicesClient, string) {
+	machinesIp := inverseFileLookup[filename]
+
+	keys := make([]string, 0, len(machinesIp))
+	for k := range machinesIp {
+		keys = append(keys, k)
+	}
+	randMachine := rand.Intn(len(keys))
+	from := datakeepers[keys[randMachine]].services
+
+	for ip, node := range datakeepers {
+		// if the machine is already having the file
+		if _, ok := machinesIp[ip]; ok {
+			continue
+		} else {
+			port := node.replicateFileTransferPort
+			return from, ip + ":" + strconv.Itoa(int(port))
+		}
+	}
+	return nil, ""
 }

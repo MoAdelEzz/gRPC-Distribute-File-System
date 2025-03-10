@@ -6,7 +6,6 @@ import (
 	"log"
 	"net"
 	"os"
-	"path/filepath"
 	"strconv"
 	"sync"
 	"time"
@@ -17,65 +16,33 @@ import (
 	dcs "github.com/MoAdelEzz/gRPC-Distribute-File-System/services/datakeeper"
 
 	Utils "github.com/MoAdelEzz/gRPC-Distribute-File-System/utils"
+	KeeperUtils "github.com/MoAdelEzz/gRPC-Distribute-File-System/utils/data-keeper"
 
 	"github.com/joho/godotenv"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 )
 
-var available_space = 1000
+var MasterServices mt.Master2DatakeeperServicesClient
+
 var name = ""
 var ctx context.Context = nil
 
 var mainBorder sync.WaitGroup
 var masterTrackerBorder sync.WaitGroup
 
-var MasterServices mt.Master2DatakeeperServicesClient
-
-var filesystem = make([]*mt.FileInfo, 0)
-
-func ReadFileSystem() {
-	if len(filesystem) == 0 {
-		directory := "fs"
-		files, err := os.ReadDir(directory)
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		for _, file := range files {
-			if file.IsDir() {
-				continue
-			}
-
-			filePath := filepath.Join(directory, file.Name())
-			info, err := os.Stat(filePath)
-			if err != nil {
-				log.Fatal(err)
-				continue
-			}
-
-			name := file.Name()
-			size := info.Size()
-
-			fmt.Println(name, size)
-
-			filesystem = append(filesystem, &mt.FileInfo{
-				Name: name,
-				Size: int32(size),
-			})
-		}
-	}
-}
-
 func KeepalivePing(ctx context.Context, master *mt.Master2DatakeeperServicesClient) {
 	defer masterTrackerBorder.Done()
 
-	ReadFileSystem()
+	filesystem := KeeperUtils.ReadFileSystem()
 	fileTransferPort, _ := strconv.Atoi(os.Getenv("DATAKEEPER_FILE_TRANSFER_PORT"))
+	replicatePort, _ := strconv.Atoi(os.Getenv("DATAKEEPER_REPLICATE_PORT"))
+
 	for {
 		_, err := (*master).HeartBeat(ctx, &mt.HeartBeatRequest{
 			Files:            filesystem,
 			FileTransferPort: int32(fileTransferPort),
+			ReplicatePort:    int32(replicatePort),
 		})
 		if err != nil {
 			fmt.Println("Error: ", err)
@@ -84,35 +51,6 @@ func KeepalivePing(ctx context.Context, master *mt.Master2DatakeeperServicesClie
 
 		time.Sleep(time.Second)
 	}
-}
-
-func ConnectToMasterServices() {
-	defer mainBorder.Done()
-
-	masterAddr := os.Getenv("MASTER_IP") + ":" + os.Getenv("MASTER_DATAKEEPERS_PORT")
-	max_space, err := strconv.Atoi(os.Getenv("DATAKEEPER_MAX_CAPACITY"))
-	if err != nil {
-		max_space = 1000
-	}
-
-	available_space = max_space
-
-	conn, err := grpc.Dial(masterAddr, grpc.WithInsecure())
-	if err != nil {
-		fmt.Println("did not connect:", err)
-		return
-	}
-	defer conn.Close()
-
-	MasterServices = mt.NewMaster2DatakeeperServicesClient(conn)
-	go KeepalivePing(ctx, &MasterServices)
-
-	masterTrackerBorder.Add(1)
-	masterTrackerBorder.Wait()
-}
-
-func DataNodesFileTransfer() {
-	defer mainBorder.Done()
 }
 
 func HandleFileUpload(conn net.Conn) bool {
@@ -129,18 +67,23 @@ func HandleFileUpload(conn net.Conn) bool {
 		Filename: filename,
 		Filesize: int32(byteCount),
 	})
-
+	// TODO: revise this
 	// notify the client
 	if err != nil || resp.StatusCode != 200 {
 		conn.Write([]byte("ERROR"))
 		conn.Read([]byte{})
 		fmt.Println(err)
 		return false
+	} else {
+		conn.Write([]byte("OK"))
+		conn.Read([]byte{})
 	}
+
+	// Update The Lookup Table
+	KeeperUtils.AppendFileToSystem(filename, byteCount)
 
 	return true
 }
-
 func HandleFileDownload(conn net.Conn) bool {
 	n, buffer := Utils.ReadChunck(&conn)
 	filename := string(buffer[:n])
@@ -170,6 +113,60 @@ func ClientsFileTransfer(conn net.Conn) bool {
 	return true
 }
 
+func ReplicateFileTransfer(conn net.Conn) bool {
+	defer conn.Close()
+
+	done, _, _ := Utils.ReadFileFromNetwork("", &conn, "fs")
+	if !done {
+		fmt.Println("Error While Sending File")
+		return false
+	}
+
+	return true
+}
+
+func ConnectToMasterServices() {
+	defer mainBorder.Done()
+
+	masterAddr := os.Getenv("MASTER_IP") + ":" + os.Getenv("MASTER_DATAKEEPERS_PORT")
+
+	conn, err := grpc.Dial(masterAddr, grpc.WithInsecure())
+	if err != nil {
+		fmt.Println("did not connect:", err)
+		return
+	}
+	defer conn.Close()
+
+	MasterServices = mt.NewMaster2DatakeeperServicesClient(conn)
+	go KeepalivePing(ctx, &MasterServices)
+
+	masterTrackerBorder.Add(1)
+	masterTrackerBorder.Wait()
+}
+
+// ===============================================================================
+// =============================== Datanode Services ============================================
+// ===============================================================================
+
+func StartDatanodeServices() {
+	defer mainBorder.Done()
+
+	datakeepersServicesPort := ":" + os.Getenv("DATAKEEPER_SERVICES_PORT")
+	lis, err := net.Listen("tcp", datakeepersServicesPort)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	grpcServer := grpc.NewServer()
+	dcs.RegisterDatakeeperServicesServer(grpcServer, &dc.Datakeeper2MasterServer{})
+	fmt.Println("Datakeepers Services Server started. Listening on port " + datakeepersServicesPort + "...")
+
+	if err := grpcServer.Serve(lis); err != nil {
+		log.Fatalf("failed to serve: %v", err)
+	}
+}
+
 func ListenToClientFileTransfer() {
 	defer mainBorder.Done()
 
@@ -191,22 +188,24 @@ func ListenToClientFileTransfer() {
 	}
 }
 
-func StartDatanodeServices() {
+func ListenToReplicateFileTransfer() {
 	defer mainBorder.Done()
 
-	datakeepersServicesPort := ":" + os.Getenv("DATAKEEPER_SERVICES_PORT")
-	lis, err := net.Listen("tcp", datakeepersServicesPort)
+	listener, err := net.Listen("tcp", ":"+os.Getenv("DATAKEEPER_REPLICATE_PORT"))
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
+	println("Replicate File Transfer Server started. Listening on port " + os.Getenv("DATAKEEPER_REPLICATE_PORT") + "...")
 
-	grpcServer := grpc.NewServer()
-	dcs.RegisterDatakeeperServicesServer(grpcServer, &dc.Datakeeper2MasterServer{})
-	fmt.Println("Datakeepers Services Server started. Listening on port " + datakeepersServicesPort + "...")
+	for {
+		conn, err := listener.Accept()
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
 
-	if err := grpcServer.Serve(lis); err != nil {
-		log.Fatalf("failed to serve: %v", err)
+		go ReplicateFileTransfer(conn)
 	}
 }
 
@@ -223,10 +222,11 @@ func main() {
 	md := metadata.Pairs("nodeName", name)
 	ctx = metadata.NewOutgoingContext(context.Background(), md)
 
-	mainBorder.Add(3)
+	mainBorder.Add(4)
 	go StartDatanodeServices()
 	go ConnectToMasterServices()
 	go ListenToClientFileTransfer()
+	go ListenToReplicateFileTransfer()
 	mainBorder.Wait()
 
 }
