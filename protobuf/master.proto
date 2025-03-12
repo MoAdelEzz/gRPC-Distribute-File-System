@@ -1,0 +1,27 @@
+syntax = "proto3";
+option go_package = "MoA/Distubted-File-System";
+package DFS;
+
+message GetSourceMachineRequest {
+    string filename = 1;
+}
+
+message GetSourceMachineResponse {
+    string machineAddress = 1;
+    int32 sizeInBytes = 2;
+}
+
+
+message SelectMachineRequest {
+    string filename = 1;
+    int32 sizeInBytes = 2;
+}
+
+message SelectMachineResponse {
+    string machineAddress = 1;
+}
+
+service Master2ClientServices {
+    rpc SelectMachineToCopyTo ( SelectMachineRequest ) returns ( SelectMachineResponse ) {};
+    rpc GetSourceMachine ( GetSourceMachineRequest ) returns ( GetSourceMachineResponse );
+}

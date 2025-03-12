@@ -1,31 +1,35 @@
 gen:
-	if not exist "services/master-tracker/client" mkdir "services/master-tracker/client"
-	if not exist "services/master-tracker/datakeeper" mkdir "services/master-tracker/datakeeper"
-	if not exist "services/master-tracker/datakeeper" mkdir "services/datakeeper"
+	if not exist "services" mkdir "services"
 	@protoc \
-	  --proto_path=protobuf "protobuf/master-tracker/client/client.proto" \
+	  --proto_path=protobuf "protobuf/controller.proto" \
 	  --go_out=services \
 	  --go_opt=paths=source_relative \
 	  --go-grpc_out=services \
 	  --go-grpc_opt=paths=source_relative
 
 	@protoc \
-	  --proto_path=protobuf "protobuf/master-tracker/datakeeper/datakeeper.proto" \
+	  --proto_path=protobuf "protobuf/datanode.proto" \
 	  --go_out=services \
 	  --go_opt=paths=source_relative \
 	  --go-grpc_out=services \
 	  --go-grpc_opt=paths=source_relative
 
 	@protoc \
-	  --proto_path=protobuf "protobuf/datakeeper/datakeeper.proto" \
+	  --proto_path=protobuf "protobuf/master.proto" \
 	  --go_out=services \
 	  --go_opt=paths=source_relative \
 	  --go-grpc_out=services \
 	  --go-grpc_opt=paths=source_relative
 
+run-master:
+	cd master && go build -o ../out/master.exe
+	./out/master.exe
 
-run:
-	start cmd /k "go run master-tracker/main.go" 
-	start cmd /k "go run data-keeper/main.go datanode-1"
-	# start cmd /k "go run data-keeper/main.go datanode-2"
-	# start cmd /k "go run data-keeper/main.go datanode-3"
+run-datanode:
+	cd datanode && go build -o ../out/datanode.exe
+	./out/datanode.exe
+
+ARGS ?=
+run-client:
+	cd client && go build -o ../out/client.exe
+	./out/client.exe ${ARGS}

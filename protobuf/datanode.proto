@@ -1,0 +1,26 @@
+syntax = "proto3";
+option go_package = "MoA/Distubted-File-System";
+package DFS;
+
+
+message FileTransferStateRequset {
+    string filename = 1;
+}
+
+message FileTransferStateResponse {
+    string status = 1;
+}
+
+message ReplicateRequest {
+    string machineAddress = 1;
+    string filename = 2;
+}
+
+message ReplicateResponse {
+    bool ok = 1;
+}
+
+service DatakeeperServices {
+    rpc GetFileTransferState ( FileTransferStateRequset ) returns ( FileTransferStateResponse ) {}
+    rpc ReplicateTo( ReplicateRequest ) returns ( ReplicateResponse ) {}
+}

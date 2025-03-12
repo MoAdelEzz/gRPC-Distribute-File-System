@@ -1,0 +1,38 @@
+syntax = "proto3";
+option go_package = "MoA/Distubted-File-System";
+package DFS;
+
+// ==================================================
+
+message RegisterFileRequest {
+    string filename = 1;
+}
+
+message RegisterFileResponse {
+    bool ok = 1;
+}
+
+// ==================================================
+
+message FileInfo {
+    string filename = 1;
+    int32 sizeInBytes = 2;
+}
+
+message HeartBeatRequest {
+    repeated FileInfo filesystem = 1;
+    int32 clientsPort = 2;
+    int32 replicatePort = 3;
+}
+
+message HeartBeatResponse {
+    bool ok = 1;
+}
+
+// ==================================================
+
+
+service Master2DatakeeperServices {
+    rpc RegisterFile ( RegisterFileRequest ) returns ( RegisterFileResponse );
+    rpc HeartBeat    ( HeartBeatRequest )    returns ( HeartBeatResponse) {}
+}

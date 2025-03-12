@@ -6,17 +6,17 @@ import (
 	"log"
 	"net"
 	"os"
-	"strconv"
 
-	MasterServices "github.com/MoAdelEzz/gRPC-Distribute-File-System/services/master-tracker/client"
-	Utils "github.com/MoAdelEzz/gRPC-Distribute-File-System/utils"
+	Utils "MoA/Distubted-File-System"
+	Services "MoA/Distubted-File-System/services"
+
 	"github.com/joho/godotenv"
 	"google.golang.org/grpc"
 )
 
 var masterAddr string
 var clientConn *grpc.ClientConn
-var MasterTracker MasterServices.Master2ClientServicesClient = nil
+var MasterTracker Services.Master2ClientServicesClient = nil
 
 func ConnectToMasterServices() {
 	masterAddr = os.Getenv("MASTER_IP") + ":" + os.Getenv("MASTER_CLIENTS_PORT")
@@ -27,47 +27,45 @@ func ConnectToMasterServices() {
 		return
 	}
 
-	MasterTracker = MasterServices.NewMaster2ClientServicesClient(clientConn)
+	MasterTracker = Services.NewMaster2ClientServicesClient(clientConn)
 }
 
 func GetDatanodeAddress(mode string, filepath string) string {
 	if mode == "upload" {
 		fileName, fileSize := Utils.GetFileMetaData(filepath)
 		resp, err := MasterTracker.SelectMachineToCopyTo(context.Background(),
-			&MasterServices.SelectMachineRequest{
-				Filename: fileName,
-				Size:     int32(fileSize)})
-
-		println(resp.Ip)
-		println(resp.Port)
+			&Services.SelectMachineRequest{
+				Filename:    fileName,
+				SizeInBytes: int32(fileSize)})
 
 		if err != nil {
 			fmt.Println("Error: ", err)
 			return ""
 		}
 
-		return resp.Ip + ":" + strconv.Itoa(int(resp.Port))
+		return resp.MachineAddress
 	} else {
 		resp, err := MasterTracker.GetSourceMachine(context.Background(),
-			&MasterServices.GetSourceMachineRequest{Filename: filepath})
+			&Services.GetSourceMachineRequest{Filename: filepath})
 		if err != nil {
 			fmt.Println("Error: ", err)
 			return ""
 		}
-		return resp.Ip + ":" + strconv.Itoa(int(resp.Port))
+		return resp.MachineAddress
 	}
 }
 
 func UploadFile(path string) bool {
 	// selecting a proper machine from the master tracker
-	conn, err := net.Dial("tcp", GetDatanodeAddress("upload", path))
+	address := GetDatanodeAddress("upload", path)
+	conn, err := net.Dial("tcp", address)
 	if err != nil {
 		fmt.Println("did not connect:", err)
 		return false
 	}
 	defer conn.Close()
 
-	Utils.WriteChunck(&conn, []byte("UPLOAD"))
+	Utils.WriteChunckToNetwork(&conn, []byte("UPLOAD"))
 
 	// Writing File To Network
 	done, _ := Utils.WriteFileToNetwork(path, &conn, true)
@@ -75,9 +73,9 @@ func UploadFile(path string) bool {
 		fmt.Println("Error While Receiving File")
 		return false
 	}
-
+	
 	// waiting the data keeper to register the file transfer for the master tracker
-	n, buffer := Utils.ReadChunck(&conn)
+	n, buffer := Utils.ReadChunckFromNetwork(&conn)
 	message := string(buffer[:n])
 	if message == "OK" {
 		fmt.Println("File uploaded successfully")
@@ -101,8 +99,8 @@ func DownloadFile(name string) bool {
 	}
 	defer conn.Close()
 
-	Utils.WriteChunck(&conn, []byte("DOWNLOAD"))
-	Utils.WriteChunck(&conn, []byte(name))
+	Utils.WriteChunckToNetwork(&conn, []byte("DOWNLOAD"))
+	Utils.WriteChunckToNetwork(&conn, []byte(name))
 
 	// Writing File To Network
 	done, _, _ := Utils.ReadFileFromNetwork(name, &conn, "download")
