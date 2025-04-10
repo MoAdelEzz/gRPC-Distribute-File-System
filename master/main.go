@@ -84,7 +84,7 @@ func ReplicateFiles() {
 		}
 
 		for _, file := range filesToReplicate {
-			fromMachine, toMachine := GetMachineToReplicate(file)
+			fromMachine, toMachines := GetMachineToReplicate(file)
 			if fromMachine == nil {
 				println("No Available Machine To Replicate To")
 				break
@@ -92,7 +92,7 @@ func ReplicateFiles() {
 
 			resp, err := fromMachine.ReplicateTo(context.Background(), &Services.ReplicateRequest{
 				Filename:       file,
-				MachineAddress: toMachine,
+				MachineAddresses: toMachines,
 			})
 
 			if err != nil || !resp.Ok {
@@ -100,7 +100,7 @@ func ReplicateFiles() {
 				break
 			}
 
-			RegisterReplicateComplete(toMachine, file)
+			RegisterReplicateComplete(toMachines, file)
 		}
 
 		time.Sleep(10 * time.Second)

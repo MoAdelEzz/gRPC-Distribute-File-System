@@ -79,10 +79,12 @@ func RegisterFileTransferComplete(nodeAddress string, filename string) {
 	fileTable[filename][ip] = true
 }
 
-func RegisterReplicateComplete(nodeAddress string, filename string) {
-	fmt.Println("File ", filename, " Has Been Replicated to ", nodeAddress, " successfully")
-	ip, _ := ResolveAddress(nodeAddress)
-	fileTable[filename][ip] = true
+func RegisterReplicateComplete(nodeAddresses []string, filename string) {
+	for _, nodeAddress := range nodeAddresses {
+		fmt.Println("File ", filename, " Has Been Replicated to ", nodeAddress, " successfully")
+		ip, _ := ResolveAddress(nodeAddress)
+		fileTable[filename][ip] = true
+	}
 }
 
 func RegisterHeartBeat(machineAddress string, req *Services.HeartBeatRequest) {
@@ -196,20 +198,21 @@ func GetFilesToReplicate() []string {
 	fileTableBorder.Wait()
 	fileTableBorder.Add(1)
 	defer fileTableBorder.Done()
+	NUM_REPLICA, _ := strconv.Atoi(os.Getenv("NUM_REPLICA"))
 
 	var files []string
 	for filename, machinesIp := range fileTable {
 		if len(machinesIp) == 0 {
 			delete(fileTable, filename)
 		}
-		if len(machinesIp) < 2 {
+		if len(machinesIp) < NUM_REPLICA {
 			files = append(files, filename)
 		}
 	}
 	return files
 }
 
-func GetMachineToReplicate(filename string) (Services.DatakeeperServicesClient, string) {
+func GetMachineToReplicate(filename string) (Services.DatakeeperServicesClient, []string) {
 	fileTableBorder.Wait()
 	fileTableBorder.Add(1)
 	defer fileTableBorder.Done()
@@ -221,7 +224,7 @@ func GetMachineToReplicate(filename string) (Services.DatakeeperServicesClient, 
 	machinesIp := fileTable[filename]
 
 	if len(machinesIp) == 0 {
-		return nil, ""
+		return nil, []string{}
 	}
 
 	keys := make([]string, 0, len(machinesIp))
@@ -231,14 +234,20 @@ func GetMachineToReplicate(filename string) (Services.DatakeeperServicesClient, 
 	randMachine := rand.Intn(len(keys))
 	from := activeMachines[keys[randMachine]].services
 
+	NUM_REPLICA, _ := strconv.Atoi(os.Getenv("NUM_REPLICA"));
+	toMachines := []string{}
+
 	for ip, node := range activeMachines {
 		// if the machine is already having the file
 		if _, ok := machinesIp[ip]; ok {
 			continue
 		} else {
 			port := node.replicateFileTransferPort
-			return from, ip + ":" + strconv.Itoa(int(port))
+			toMachines = append(toMachines, ip+":"+strconv.Itoa(int(port)))
+			if len(toMachines) >= NUM_REPLICA - len(keys) {
+				return from, toMachines
+			}
 		}
 	}
-	return nil, ""
+	return nil, []string{}
 }

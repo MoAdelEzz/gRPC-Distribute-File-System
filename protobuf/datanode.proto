@@ -12,7 +12,7 @@ message FileTransferStateResponse {
 }
 
 message ReplicateRequest {
-    string machineAddress = 1;
+    repeated string machineAddresses = 1;
     string filename = 2;
 }
 

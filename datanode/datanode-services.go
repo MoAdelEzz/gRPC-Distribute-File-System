@@ -22,18 +22,22 @@ func (s *DataNode2MasterServer) GetFileTransferState(ctx context.Context, req *S
 
 func (s *DataNode2MasterServer) ReplicateTo(ctx context.Context, req *Services.ReplicateRequest) (*Services.ReplicateResponse, error) {
 
-	conn, err := net.Dial("tcp", req.MachineAddress)
-	if err != nil {
-		fmt.Println("did not connect:", err)
-		return &Services.ReplicateResponse{Ok: false}, err
-	}
-	defer conn.Close()
-
-	path := "fs/" + req.Filename
-	done, _ := Utils.WriteFileToNetwork(path, &conn, true)
-	if !done {
-		fmt.Println("Error While Replicating File")
-		return &Services.ReplicateResponse{Ok: false}, err
+	for _, MachineAddress := range req.MachineAddresses {
+		conn, err := net.Dial("tcp", MachineAddress)
+		if err != nil {
+			fmt.Println("did not connect:", err)
+			conn.Close()
+			return &Services.ReplicateResponse{Ok: false}, err
+		}
+	
+		path := "fs/" + req.Filename
+		done, _ := Utils.WriteFileToNetwork(path, &conn, true, false)
+		if !done {
+			fmt.Println("Error While Replicating File")
+			conn.Close()
+			return &Services.ReplicateResponse{Ok: false}, err
+		}
+		conn.Close()
 	}
 
 	return &Services.ReplicateResponse{Ok: true}, nil

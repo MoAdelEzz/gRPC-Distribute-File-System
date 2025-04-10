@@ -68,7 +68,7 @@ func UploadFile(path string) bool {
 	Utils.WriteChunckToNetwork(&conn, []byte("UPLOAD"))
 
 	// Writing File To Network
-	done, _ := Utils.WriteFileToNetwork(path, &conn, true)
+	done, _ := Utils.WriteFileToNetwork(path, &conn, true, true)
 	if !done {
 		fmt.Println("Error While Receiving File")
 		return false
@@ -79,6 +79,8 @@ func UploadFile(path string) bool {
 	message := string(buffer[:n])
 	if message == "OK" {
 		fmt.Println("File uploaded successfully")
+	} else {
+		fmt.Println("Error: ", message)
 	}
 
 	return true
@@ -103,7 +105,7 @@ func DownloadFile(name string) bool {
 	Utils.WriteChunckToNetwork(&conn, []byte(name))
 
 	// Writing File To Network
-	done, _, _ := Utils.ReadFileFromNetwork(name, &conn, "download")
+	done, _, _ := Utils.ReadFileFromNetwork(name, &conn, "download", true)
 	return done
 }
 

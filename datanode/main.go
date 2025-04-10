@@ -50,7 +50,7 @@ func KeepalivePing(ctx context.Context, master *Services.Master2DatakeeperServic
 
 func HandleFileUpload(conn net.Conn) bool {
 	// Reading The File From Network
-	done, filename, byteCount := Utils.ReadFileFromNetwork("", &conn, "fs")
+	done, filename, byteCount := Utils.ReadFileFromNetwork("", &conn, "fs", false)
 
 	if !done {
 		fmt.Println("Error While Receiving File")
@@ -82,7 +82,7 @@ func HandleFileDownload(conn net.Conn) bool {
 	filename := string(buffer[:n])
 	path := "fs/" + filename
 
-	done, _ := Utils.WriteFileToNetwork(path, &conn, false)
+	done, _ := Utils.WriteFileToNetwork(path, &conn, false, false)
 	if !done {
 		fmt.Println("Error While Sending File")
 		return false
@@ -108,7 +108,7 @@ func ClientsFileTransfer(conn net.Conn) bool {
 func ReplicateFileTransfer(conn net.Conn) bool {
 	defer conn.Close()
 
-	done, _, _ := Utils.ReadFileFromNetwork("", &conn, "fs")
+	done, _, _ := Utils.ReadFileFromNetwork("", &conn, "fs", false)
 	if !done {
 		fmt.Println("Error While Sending File")
 		return false

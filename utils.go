@@ -125,7 +125,7 @@ func WriteChunckToNetwork(conn *net.Conn, buffer []byte) int {
 	return n
 }
 
-func ReadFileFromNetwork(filename string, conn *net.Conn, folder string) (bool, string, int) {
+func ReadFileFromNetwork(filename string, conn *net.Conn, folder string, showProgress bool) (bool, string, int) {
 	if len(filename) == 0 {
 		n, buffer := ReadChunckFromNetwork(conn)
 		filename = string(buffer[:n])
@@ -149,7 +149,12 @@ func ReadFileFromNetwork(filename string, conn *net.Conn, folder string) (bool, 
 	defer file.Close()
 
 	fmt.Println("Downloading ", filename)
-	bar := progressbar.Default(int64(fileSize))
+	var bar *progressbar.ProgressBar
+	if showProgress {
+		bar = progressbar.Default(int64(fileSize))
+	} else {
+		fmt.Println("file: ", filename, " is being downloaded")
+	}
 
 	byteCount := 0
 	for {
@@ -162,7 +167,9 @@ func ReadFileFromNetwork(filename string, conn *net.Conn, folder string) (bool, 
 
 		byteCount += n
 		file.Write(buffer[:n])
-		bar.Add(n)
+		if showProgress {
+			bar.Add(n)
+		}
 	}
 
 	fmt.Println("Download Complete")
@@ -170,7 +177,7 @@ func ReadFileFromNetwork(filename string, conn *net.Conn, folder string) (bool, 
 	return true, filename, byteCount
 }
 
-func WriteFileToNetwork(path string, conn *net.Conn, sendName bool) (bool, int) {
+func WriteFileToNetwork(path string, conn *net.Conn, sendName bool, showProgress bool) (bool, int) {
 	file := OpenFile(path)
 	defer file.Close()
 
@@ -186,7 +193,12 @@ func WriteFileToNetwork(path string, conn *net.Conn, sendName bool) (bool, int) 
 	defer closeFile()
 
 	fmt.Println("Uploading ", filepath.Base(path))
-	bar := progressbar.Default(int64(fileInfo.Size()))
+	var bar *progressbar.ProgressBar
+	if showProgress {
+		bar = progressbar.Default(int64(fileInfo.Size()))
+	} else {
+		fmt.Println("file: ", filepath.Base(path), " is being uploaded")
+	}
 
 	for {
 		buffer, err := nextChunk()
@@ -198,7 +210,9 @@ func WriteFileToNetwork(path string, conn *net.Conn, sendName bool) (bool, int) 
 			return false, byteWritten
 		}
 		byteWritten += WriteChunckToNetwork(conn, buffer)
-		bar.Add(len(buffer))
+		if showProgress {
+			bar.Add(len(buffer))
+		}
 	}
 
 	fmt.Println("Upload Complete")
