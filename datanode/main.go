@@ -40,8 +40,8 @@ func KeepalivePing(ctx context.Context, master *Services.Master2DatakeeperServic
 			ReplicatePort: int32(replicatePort),
 		})
 		if err != nil {
-			fmt.Println("Error: ", err)
-			os.Exit(404)
+			log.Fatalf("Master Services Unavailable")
+			os.Exit(500)
 		}
 
 		time.Sleep(time.Second)
@@ -97,12 +97,10 @@ func ClientsFileTransfer(conn net.Conn) bool {
 	n, buffer := Utils.ReadChunckFromNetwork(&conn)
 
 	if string(buffer[:n]) == "UPLOAD" {
-		HandleFileUpload(conn)
+		return HandleFileUpload(conn)
 	} else {
-		HandleFileDownload(conn)
+		return HandleFileDownload(conn)
 	}
-
-	return true
 }
 
 func ReplicateFileTransfer(conn net.Conn) bool {

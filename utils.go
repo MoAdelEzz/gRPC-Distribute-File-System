@@ -95,18 +95,22 @@ func FileReader(filePath string, chunkSize int) (func() ([]byte, error), func())
 // ================= Network Utilities =============================
 // =================================================================
 
+
 func ReadChunckFromNetwork(conn *net.Conn) (int, []byte) {
 	chunckSize, _ := strconv.Atoi(os.Getenv("CHUNK_SIZE"))
 	buffer := make([]byte, chunckSize)
-
 	n, err := (*conn).Read(buffer)
-	if err != nil {
-		fmt.Println(err)
+	if err != nil { 
 		return 0, nil
-	}
+	} 
 
 	(*conn).Write([]byte(ACK))
 	return n, buffer
+}
+
+func TryWriteChunckToNetwork(conn *net.Conn, buffer []byte) bool {
+	n := WriteChunckToNetwork(conn, buffer)
+	return n != -1;
 }
 
 func WriteChunckToNetwork(conn *net.Conn, buffer []byte) int {
@@ -115,24 +119,31 @@ func WriteChunckToNetwork(conn *net.Conn, buffer []byte) int {
 	_, err := (*conn).Write(buffer)
 	if err != nil {
 		fmt.Println(err)
-		return 0
+		return -1
 	}
 	n, err := (*conn).Read(ack)
 	if err != nil {
 		fmt.Println(err)
-		return 0
-	}
+		return -1
+	}	
 	return n
 }
 
 func ReadFileFromNetwork(filename string, conn *net.Conn, folder string, showProgress bool) (bool, string, int) {
 	if len(filename) == 0 {
 		n, buffer := ReadChunckFromNetwork(conn)
+		if buffer == nil {
+			return false, "", -1
+		}
 		filename = string(buffer[:n])
 		println("Recieved Filename = ", filename)
 	}
 
 	n, buffer := ReadChunckFromNetwork(conn)
+	if buffer == nil {
+		return false, "", -1
+	}
+
 	fileSize, _ := strconv.Atoi(string(buffer[:n]))
 
 	done := MakeDirIfNotExists(folder)
@@ -148,7 +159,6 @@ func ReadFileFromNetwork(filename string, conn *net.Conn, folder string, showPro
 	}
 	defer file.Close()
 
-	fmt.Println("Downloading ", filename)
 	var bar *progressbar.ProgressBar
 	if showProgress {
 		bar = progressbar.Default(int64(fileSize))
@@ -159,9 +169,13 @@ func ReadFileFromNetwork(filename string, conn *net.Conn, folder string, showPro
 	byteCount := 0
 	for {
 		n, buffer := ReadChunckFromNetwork(conn)
+		if buffer == nil {
+			return false, "", -1
+		}
 
 		message := string(buffer[:n])
-		if message == EOF {
+		if n == 0 || message == EOF {
+			fmt.Println("Download Complete")
 			break
 		}
 
@@ -172,8 +186,6 @@ func ReadFileFromNetwork(filename string, conn *net.Conn, folder string, showPro
 		}
 	}
 
-	fmt.Println("Download Complete")
-
 	return true, filename, byteCount
 }
 
@@ -181,18 +193,21 @@ func WriteFileToNetwork(path string, conn *net.Conn, sendName bool, showProgress
 	file := OpenFile(path)
 	defer file.Close()
 
-	if sendName {
-		WriteChunckToNetwork(conn, []byte(filepath.Base(path)))
+	if sendName && !TryWriteChunckToNetwork(conn, []byte(filepath.Base(path))){
+		return false, -1;
 	}
 
 	fileInfo, _ := file.Stat()
-	WriteChunckToNetwork(conn, []byte(strconv.Itoa(int(fileInfo.Size()))))
+	
+	if ! TryWriteChunckToNetwork(conn, []byte(strconv.Itoa(int(fileInfo.Size())))) {
+		return false, -1;
+	}
 
+	chunckSize, _ := strconv.Atoi(os.Getenv("CHUNK_SIZE"))
 	byteWritten := 0
-	nextChunk, closeFile := FileReader(path, 1024)
+	nextChunk, closeFile := FileReader(path, chunckSize)
 	defer closeFile()
 
-	fmt.Println("Uploading ", filepath.Base(path))
 	var bar *progressbar.ProgressBar
 	if showProgress {
 		bar = progressbar.Default(int64(fileInfo.Size()))
@@ -202,14 +217,25 @@ func WriteFileToNetwork(path string, conn *net.Conn, sendName bool, showProgress
 
 	for {
 		buffer, err := nextChunk()
+
 		if err != nil {
 			if err == io.EOF {
-				WriteChunckToNetwork(conn, []byte("EOF"))
-				break
+				if !TryWriteChunckToNetwork(conn, []byte("EOF")) {
+					return false, byteWritten
+				} else {
+					break
+				}
 			}
 			return false, byteWritten
 		}
-		byteWritten += WriteChunckToNetwork(conn, buffer)
+
+
+		if n := WriteChunckToNetwork(conn, buffer); n == -1 {
+			return false, byteWritten
+		} else {
+			byteWritten += n
+		}
+
 		if showProgress {
 			bar.Add(len(buffer))
 		}

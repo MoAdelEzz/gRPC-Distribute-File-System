@@ -23,8 +23,8 @@ func ListenToDataNodes() {
 	datanodesPort := ":" + os.Getenv("MASTER_DATANODES_PORT")
 	lis, err := net.Listen("tcp", datanodesPort)
 	if err != nil {
-		fmt.Println(err)
-		return
+		log.Fatalf("Couldn't Start A Server On Port %v, Error: %v", datanodesPort, err)
+		os.Exit(500)
 	}
 
 	grpcServer := grpc.NewServer()
@@ -32,7 +32,8 @@ func ListenToDataNodes() {
 	fmt.Println("Datanodes Server started. Listening on port " + datanodesPort + "...")
 
 	if err := grpcServer.Serve(lis); err != nil {
-		log.Fatalf("failed to serve: %v", err)
+		log.Fatalf("Couldn't Attach GRPC Server On Port %v, Error: %v", datanodesPort, err)
+		os.Exit(500)
 	}
 }
 
@@ -42,8 +43,8 @@ func ListenToClient() {
 	clientsPort := ":" + os.Getenv("MASTER_CLIENTS_PORT")
 	lis, err := net.Listen("tcp", clientsPort)
 	if err != nil {
-		fmt.Println(err)
-		return
+		log.Fatalf("Couldn't Start A Server On Port %v, Error: %v", clientsPort, err)
+		os.Exit(500)
 	}
 
 	grpcServer := grpc.NewServer()
@@ -51,23 +52,39 @@ func ListenToClient() {
 	fmt.Println("Client Server started. Listening on port " + clientsPort + "...")
 
 	if err := grpcServer.Serve(lis); err != nil {
-		log.Fatalf("failed to serve: %v", err)
+		log.Fatalf("Couldn't Attach GRPC Server On Port %v, Error: %v", clientsPort, err)
+		os.Exit(500)
 	}
 }
 
 func WatchDataNodesState() {
 	defer MainSyncGroup.Done()
-
 	for {
-		time.Sleep(15 * time.Second)
+		time.Sleep(10 * time.Second)
 		DeAttachGhostedMachines()
 		EraseAbortedTransfers()
 	}
 }
 
+func ReplicateFile(fromMachine Services.DatakeeperServicesClient, filename string, toMachines []string) {
+	RegisterFileReplicateStart(toMachines, filename)
+	fmt.Printf("Replicating file '%v' to machines: %v\n", filename, toMachines)
+
+	resp, err := fromMachine.ReplicateTo(context.Background(), &Services.ReplicateRequest{
+		Filename:       filename,
+		MachineAddresses: toMachines,
+	})
+
+	if err != nil || !resp.Ok {
+		println("Error Replicating File: ", err)
+		AbortReplicate(toMachines, filename)
+	} else {
+		RegisterReplicateComplete(toMachines, filename)
+	}
+}
+
 func ReplicateFiles() {
 	defer MainSyncGroup.Done()
-
 	for {
 		println("Started File Replication Check")
 
@@ -77,7 +94,6 @@ func ReplicateFiles() {
 			println("No Files To Replicate")
 		} else {
 			println("Files To Replicate: ")
-
 			for _, file := range filesToReplicate {
 				println(file)
 			}
@@ -89,18 +105,7 @@ func ReplicateFiles() {
 				println("No Available Machine To Replicate To")
 				break
 			}
-
-			resp, err := fromMachine.ReplicateTo(context.Background(), &Services.ReplicateRequest{
-				Filename:       file,
-				MachineAddresses: toMachines,
-			})
-
-			if err != nil || !resp.Ok {
-				println("Error Replicating File: ", err)
-				break
-			}
-
-			RegisterReplicateComplete(toMachines, file)
+			go ReplicateFile(fromMachine, file, toMachines)
 		}
 
 		time.Sleep(10 * time.Second)
