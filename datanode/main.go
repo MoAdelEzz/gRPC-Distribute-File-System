@@ -61,7 +61,7 @@ func HandleFileUpload(conn net.Conn) bool {
 	resp, err := MasterServices.RegisterFile(ctx, &Services.RegisterFileRequest{Filename: filename})
 	// TODO: revise this
 	// notify the client
-	if err != nil || resp.Ok {
+	if err != nil || !resp.Ok {
 		conn.Write([]byte("ERROR"))
 		conn.Read([]byte{})
 		fmt.Println(err)

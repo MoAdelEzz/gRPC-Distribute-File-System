@@ -20,7 +20,7 @@ type DataNode struct {
 	clientFileTransferPort    int32
 	replicateFileTransferPort int32
 	ongoingTransfers          map[string]bool
-	ongoungReplicates	      map[string]bool
+	ongoungReplicates         map[string]bool
 	services                  Services.DatakeeperServicesClient
 	last_seen                 time.Time
 	mutex                     *sync.Mutex
@@ -45,6 +45,15 @@ func GetSuitableMachine(filename string, fileSize int) (string, int32) {
 		return Utils.FILE_EXISTS, -1
 	}
 
+	for _, machine := range activeMachines {
+		machine.mutex.Lock()
+		if machine.ongoingTransfers[filename] || machine.ongoungReplicates[filename] {
+			machine.mutex.Unlock()
+			return Utils.FILE_EXISTS, -1
+		}
+		machine.mutex.Unlock()
+	}
+
 	activeMachinesBorder.Wait()
 	for ip, node := range activeMachines {
 		// TODO: change this
@@ -62,7 +71,7 @@ func RegisterFileTransferStart(ip string, filename string) {
 	fmt.Println("File ", filename, " Is Being Transferred to ", ip)
 
 	activeMachines[ip].mutex.Lock()
-		activeMachines[ip].ongoingTransfers[filename] = true
+	activeMachines[ip].ongoingTransfers[filename] = true
 	activeMachines[ip].mutex.Unlock()
 }
 
@@ -70,7 +79,7 @@ func RegisterFileReplicateStart(toAddresses []string, filename string) {
 	for _, address := range toAddresses {
 		ip, _ := ResolveAddress(address)
 		activeMachines[ip].mutex.Lock()
-			activeMachines[ip].ongoungReplicates[filename] = true
+		activeMachines[ip].ongoungReplicates[filename] = true
 		activeMachines[ip].mutex.Unlock()
 	}
 }
@@ -80,7 +89,7 @@ func RegisterFileTransferComplete(nodeAddress string, filename string) {
 	ip, _ := ResolveAddress(nodeAddress)
 
 	activeMachines[ip].mutex.Lock()
-		delete(activeMachines[ip].ongoingTransfers, filename)
+	delete(activeMachines[ip].ongoingTransfers, filename)
 	activeMachines[ip].mutex.Unlock()
 
 	if _, ok := fileTable[filename]; !ok {
@@ -93,7 +102,7 @@ func RegisterReplicateComplete(nodeAddresses []string, filename string) {
 	for _, nodeAddress := range nodeAddresses {
 		ip, _ := ResolveAddress(nodeAddress)
 		activeMachines[ip].mutex.Lock()
-			delete(activeMachines[ip].ongoungReplicates, filename)
+		delete(activeMachines[ip].ongoungReplicates, filename)
 		activeMachines[ip].mutex.Unlock()
 		fmt.Println("File ", filename, " Has Been Replicated to ", nodeAddress, " successfully")
 
@@ -104,7 +113,7 @@ func RegisterReplicateComplete(nodeAddresses []string, filename string) {
 func AbortReplicate(ips []string, filename string) {
 	for _, ip := range ips {
 		activeMachines[ip].mutex.Lock()
-			delete(activeMachines[ip].ongoungReplicates, filename)
+		delete(activeMachines[ip].ongoungReplicates, filename)
 		activeMachines[ip].mutex.Unlock()
 	}
 }
@@ -150,7 +159,7 @@ func DeAttachGhostedMachines() {
 
 	OfflineFound := false
 	for ip, value := range activeMachines {
-		if time.Since(value.last_seen) > time.Second+50*time.Millisecond {
+		if time.Since(value.last_seen) > 2*time.Second+50*time.Millisecond {
 			fmt.Println("Machine ", ip, " has gone offline")
 			OfflineFound = true
 			delete(activeMachines, ip)
@@ -257,7 +266,7 @@ func GetMachineToReplicate(filename string) (Services.DatakeeperServicesClient, 
 	randMachine := rand.Intn(len(keys))
 	from := activeMachines[keys[randMachine]].services
 
-	numOfReplicas, _ := strconv.Atoi(os.Getenv("NUM_REPLICA"));
+	numOfReplicas, _ := strconv.Atoi(os.Getenv("NUM_REPLICA"))
 	numOfReplicas -= len(keys)
 
 	for _, machine := range activeMachines {
@@ -267,7 +276,7 @@ func GetMachineToReplicate(filename string) (Services.DatakeeperServicesClient, 
 	}
 
 	toMachines := []string{}
-	
+
 	for ip, node := range activeMachines {
 		// if the machine is already having the file
 		if _, ok := machinesIp[ip]; ok {

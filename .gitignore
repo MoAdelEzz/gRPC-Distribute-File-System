@@ -1,3 +1,12 @@
 out
 fs
 download
+.env
+cat.mp4
+download/cat.mp4
+download/moa.txt
+download/temp.txt
+download/temp2.txt
+*.mp4
+gRPC-Distribute-File-System.7z
+out/client.exe
