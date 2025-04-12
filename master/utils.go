@@ -17,13 +17,15 @@ import (
 )
 
 type DataNode struct {
-	clientFileTransferPort    int32
-	replicateFileTransferPort int32
-	ongoingTransfers          map[string]bool
-	ongoungReplicates         map[string]bool
-	services                  Services.DatakeeperServicesClient
-	last_seen                 time.Time
-	mutex                     *sync.Mutex
+	clientFileTransferPorts    []int32
+	replicateFileTransferPorts []int32
+	busyPorts                  map[string]bool
+	ongoingTransfers           map[string]string // filename: port: state
+	ongoungReplicates          map[string]string // filename: port: state
+	services                   Services.DatakeeperServicesClient
+	last_seen                  time.Time
+	mutex                      *sync.Mutex
+	capacity                   int
 }
 
 // Ip: Node Metadata
@@ -39,47 +41,80 @@ func ResolveAddress(key string) (string, string) {
 	return parts[0], parts[1]
 }
 
-func GetSuitableMachine(filename string, fileSize int) (string, int32) {
+func GetRandomPort(machineIp string, target string) string {
+	node := activeMachines[machineIp]
+
+	availablePorts := []int32{}
+	if target == "REPLICATE" {
+		for _, port := range node.replicateFileTransferPorts {
+			if !node.busyPorts[strconv.Itoa(int(port))] {
+				availablePorts = append(availablePorts, port)
+			}
+		}
+	} else {
+		for _, port := range node.clientFileTransferPorts {
+			if !node.busyPorts[strconv.Itoa(int(port))] {
+				availablePorts = append(availablePorts, port)
+			}
+		}
+	}
+
+	if len(availablePorts) > 0 {
+		rand.NewSource(time.Now().UnixNano())
+		selectedPort := availablePorts[rand.Intn(len(availablePorts))]
+		return strconv.Itoa(int(selectedPort))
+	}
+	return ""
+}
+
+func GetSuitableMachine(filename string, fileSize int) (string, string) {
 	fileTableBorder.Wait()
 	if _, ok := fileTable[filename]; ok {
-		return Utils.FILE_EXISTS, -1
+		return Utils.FILE_EXISTS, "-1"
 	}
 
 	for _, machine := range activeMachines {
 		machine.mutex.Lock()
-		if machine.ongoingTransfers[filename] || machine.ongoungReplicates[filename] {
-			machine.mutex.Unlock()
-			return Utils.FILE_EXISTS, -1
-		}
+			_, beingTransfered := machine.ongoingTransfers[filename]
+			_, beingReplicated := machine.ongoungReplicates[filename]
+			if beingTransfered || beingReplicated {
+				machine.mutex.Unlock()
+				return Utils.FILE_EXISTS, "-1"
+			}
 		machine.mutex.Unlock()
 	}
 
 	activeMachinesBorder.Wait()
 	for ip, node := range activeMachines {
-		// TODO: change this
 		node.mutex.Lock()
-		if fileSize >= 0 {
-			node.mutex.Unlock()
-			return ip, node.clientFileTransferPort
-		}
+			// TODO: change this
+			if fileSize >= 0 {
+				port := GetRandomPort(ip, "CLIENT")
+				if port != "" {
+					node.mutex.Unlock()
+					return ip, port
+				}
+			}
 		node.mutex.Unlock()
 	}
-	return Utils.NO_AVAILABLE_DATA_NODE, -1
+	return Utils.NO_AVAILABLE_DATA_NODE, "-1"
 }
 
-func RegisterFileTransferStart(ip string, filename string) {
-	fmt.Println("File ", filename, " Is Being Transferred to ", ip)
-
+func RegisterFileTransferStart(ip string, port string, filename string) {
+	
 	activeMachines[ip].mutex.Lock()
-	activeMachines[ip].ongoingTransfers[filename] = true
+		activeMachines[ip].ongoingTransfers[filename] = port
+		activeMachines[ip].busyPorts[port] = true
 	activeMachines[ip].mutex.Unlock()
+	fmt.Println("File ", filename, " Is Being Transferred to ", ip , ":", port)
 }
 
 func RegisterFileReplicateStart(toAddresses []string, filename string) {
 	for _, address := range toAddresses {
-		ip, _ := ResolveAddress(address)
+		ip, port := ResolveAddress(address)
 		activeMachines[ip].mutex.Lock()
-		activeMachines[ip].ongoungReplicates[filename] = true
+			activeMachines[ip].busyPorts[port] = true
+			activeMachines[ip].ongoungReplicates[filename] = port
 		activeMachines[ip].mutex.Unlock()
 	}
 }
@@ -89,7 +124,8 @@ func RegisterFileTransferComplete(nodeAddress string, filename string) {
 	ip, _ := ResolveAddress(nodeAddress)
 
 	activeMachines[ip].mutex.Lock()
-	delete(activeMachines[ip].ongoingTransfers, filename)
+		activeMachines[ip].busyPorts[activeMachines[ip].ongoingTransfers[filename]] = false
+		delete(activeMachines[ip].ongoingTransfers, filename)
 	activeMachines[ip].mutex.Unlock()
 
 	if _, ok := fileTable[filename]; !ok {
@@ -101,11 +137,13 @@ func RegisterFileTransferComplete(nodeAddress string, filename string) {
 func RegisterReplicateComplete(nodeAddresses []string, filename string) {
 	for _, nodeAddress := range nodeAddresses {
 		ip, _ := ResolveAddress(nodeAddress)
-		activeMachines[ip].mutex.Lock()
-		delete(activeMachines[ip].ongoungReplicates, filename)
-		activeMachines[ip].mutex.Unlock()
-		fmt.Println("File ", filename, " Has Been Replicated to ", nodeAddress, " successfully")
 
+		activeMachines[ip].mutex.Lock()
+			activeMachines[ip].busyPorts[activeMachines[ip].ongoungReplicates[filename]] = false
+			delete(activeMachines[ip].ongoungReplicates, filename)
+		activeMachines[ip].mutex.Unlock()
+
+		fmt.Println("File ", filename, " Has Been Replicated to ", nodeAddress, " successfully")
 		fileTable[filename][ip] = true
 	}
 }
@@ -113,7 +151,8 @@ func RegisterReplicateComplete(nodeAddresses []string, filename string) {
 func AbortReplicate(ips []string, filename string) {
 	for _, ip := range ips {
 		activeMachines[ip].mutex.Lock()
-		delete(activeMachines[ip].ongoungReplicates, filename)
+			activeMachines[ip].busyPorts[activeMachines[ip].ongoungReplicates[filename]] = false
+			delete(activeMachines[ip].ongoungReplicates, filename)
 		activeMachines[ip].mutex.Unlock()
 	}
 }
@@ -124,8 +163,8 @@ func RegisterHeartBeat(machineAddress string, req *Services.HeartBeatRequest) {
 
 	if node, exists := activeMachines[ip]; exists {
 		node.mutex.Lock()
-		node.last_seen = time.Now()
-		activeMachines[ip] = node
+			node.last_seen = time.Now()
+			activeMachines[ip] = node
 		node.mutex.Unlock()
 	} else {
 		conn, _ := grpc.Dial(ip+":"+port, grpc.WithInsecure())
@@ -133,13 +172,14 @@ func RegisterHeartBeat(machineAddress string, req *Services.HeartBeatRequest) {
 
 		activeMachinesBorder.Add(1)
 		activeMachines[ip] = DataNode{
-			last_seen:                 time.Now(),
-			clientFileTransferPort:    req.ClientsPort,
-			replicateFileTransferPort: req.ReplicatePort,
-			ongoingTransfers:          make(map[string]bool),
-			ongoungReplicates:         make(map[string]bool),
-			services:                  servicesConn,
-			mutex:                     &sync.Mutex{},
+			last_seen:                  time.Now(),
+			clientFileTransferPorts:    req.ClientsPorts,
+			replicateFileTransferPorts: req.ReplicatePorts,
+			ongoingTransfers:           make(map[string]string),
+			ongoungReplicates:          make(map[string]string),
+			busyPorts: 					make(map[string]bool),			
+			services:                   servicesConn,
+			mutex:                      &sync.Mutex{},
 		}
 		activeMachinesBorder.Done()
 	}
@@ -175,14 +215,15 @@ func DeAttachGhostedMachines() {
 func EraseAbortedTransfers() {
 	for ip, node := range activeMachines {
 		node.mutex.Lock()
-		for filename, _ := range node.ongoingTransfers {
-			resp, _ := node.services.GetFileTransferState(context.Background(), &Services.FileTransferStateRequset{Filename: filename})
+			for filename, _ := range node.ongoingTransfers {
+				resp, _ := node.services.GetFileTransferState(context.Background(), &Services.FileTransferStateRequset{Filename: filename})
 
-			if resp.Status == Utils.ABORTED {
-				fmt.Println("uploading file ", filename, " to machine ", ip, " has been aborted")
-				delete(node.ongoingTransfers, filename)
+				if resp.Status == Utils.ABORTED {
+					fmt.Println("uploading file ", filename, " to machine ", ip, " has been aborted")
+					node.busyPorts[node.ongoingTransfers[filename]] = false
+					delete(node.ongoingTransfers, filename)
+				}
 			}
-		}
 		node.mutex.Unlock()
 	}
 }
@@ -209,21 +250,23 @@ func RevalidateLookupTable() {
 	}
 }
 
-func GetSourceMachine(filename string) (string, int32) {
+func GetSourceMachine(filename string) (string, string) {
 	fileTableBorder.Wait()
 	fileTableBorder.Add(1)
 	defer fileTableBorder.Done()
 
 	if _, ok := fileTable[filename]; !ok {
-		return "", -1
+		return "", "-1"
 	}
 
 	for ip, _ := range fileTable[filename] {
-		port := activeMachines[ip].clientFileTransferPort
-		return ip, int32(port)
+		port := GetRandomPort(ip, "CLIENT")
+		if port != "" {
+			return ip, port
+		}
 	}
 
-	return "", -1
+	return "", "-2"
 }
 
 func GetFilesToReplicate() []string {
@@ -270,20 +313,21 @@ func GetMachineToReplicate(filename string) (Services.DatakeeperServicesClient, 
 	numOfReplicas -= len(keys)
 
 	for _, machine := range activeMachines {
-		if machine.ongoungReplicates[filename] {
+		_, isReplicating := machine.ongoungReplicates[filename]
+		if isReplicating {
 			numOfReplicas -= 1
 		}
 	}
 
 	toMachines := []string{}
 
-	for ip, node := range activeMachines {
+	for ip, _ := range activeMachines {
 		// if the machine is already having the file
 		if _, ok := machinesIp[ip]; ok {
 			continue
 		} else {
-			port := node.replicateFileTransferPort
-			toMachines = append(toMachines, ip+":"+strconv.Itoa(int(port)))
+			port := GetRandomPort(ip, "REPLICATE")
+			toMachines = append(toMachines, ip+":"+port)
 			if len(toMachines) >= numOfReplicas {
 				return from, toMachines
 			}

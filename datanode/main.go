@@ -26,18 +26,36 @@ var ctx context.Context = nil
 var mainBorder sync.WaitGroup
 var masterTrackerBorder sync.WaitGroup
 
+func RangedList(start int, count int) []int32 {
+	result := []int32{}
+	for i := start; i < start+count; i++ {
+		result = append(result, int32(i))		
+	}
+	return result
+}
+
+func GetClientTransferPorts() []int32 {
+	fileTransferPortsStart, _ := strconv.Atoi(os.Getenv("DATANODE_FILE_TRANSFER_START_PORT"))
+	fileTransferPortCount, _  := strconv.Atoi(os.Getenv("DATANODE_FILE_TRANSFER_PORT_COUNT"))
+	return RangedList(fileTransferPortsStart, fileTransferPortCount)
+}
+
+func GetReplicateTransferPorts() []int32 {
+	replicatePortStart, _  := strconv.Atoi(os.Getenv("DATANODE_REPLICATE_START_PORT"))
+	replicatePortCount, _  := strconv.Atoi(os.Getenv("DATANODE_REPLICATE_PORT_COUNT"))
+	return RangedList(replicatePortStart, replicatePortCount)
+}
+
 func KeepalivePing(ctx context.Context, master *Services.Master2DatakeeperServicesClient) {
 	defer masterTrackerBorder.Done()
 
 	filesystem := ReadFileSystem()
-	fileTransferPort, _ := strconv.Atoi(os.Getenv("DATANODE_FILE_TRANSFER_PORT"))
-	replicatePort, _ := strconv.Atoi(os.Getenv("DATANODE_REPLICATE_PORT"))
 
 	for {
 		_, err := (*master).HeartBeat(ctx, &Services.HeartBeatRequest{
 			Filesystem:    filesystem,
-			ClientsPort:   int32(fileTransferPort),
-			ReplicatePort: int32(replicatePort),
+			ClientsPorts:   GetClientTransferPorts(),
+			ReplicatePorts: GetReplicateTransferPorts(),
 		})
 		if err != nil {
 			log.Fatalf("Master Services Unavailable")
@@ -47,7 +65,6 @@ func KeepalivePing(ctx context.Context, master *Services.Master2DatakeeperServic
 		time.Sleep(time.Second)
 	}
 }
-
 func HandleFileUpload(conn net.Conn) bool {
 	// Reading The File From Network
 	done, filename, byteCount := Utils.ReadFileFromNetwork("", &conn, "fs", false)
@@ -90,7 +107,6 @@ func HandleFileDownload(conn net.Conn) bool {
 
 	return true
 }
-
 func ClientsFileTransfer(conn net.Conn) bool {
 	defer conn.Close()
 
@@ -157,15 +173,15 @@ func StartDatanodeServices() {
 	}
 }
 
-func ListenToClientFileTransfer() {
+func ListenToClientFileTransfer(port int32) {
 	defer mainBorder.Done()
 
-	listener, err := net.Listen("tcp", ":"+os.Getenv("DATANODE_FILE_TRANSFER_PORT"))
+	listener, err := net.Listen("tcp", ":"+ strconv.Itoa(int(port)))
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
-	println("File Transfer Server started. Listening on port " + os.Getenv("DATANODE_FILE_TRANSFER_PORT") + "...")
+	println("File Transfer Server started. Listening on port " + strconv.Itoa(int(port)) + "...")
 
 	for {
 		conn, err := listener.Accept()
@@ -178,15 +194,15 @@ func ListenToClientFileTransfer() {
 	}
 }
 
-func ListenToReplicateFileTransfer() {
+func ListenToReplicateFileTransfer(port int32) {
 	defer mainBorder.Done()
 
-	listener, err := net.Listen("tcp", ":"+os.Getenv("DATANODE_REPLICATE_PORT"))
+	listener, err := net.Listen("tcp", ":"+ strconv.Itoa(int(port)))
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
-	println("Replicate File Transfer Server started. Listening on port " + os.Getenv("DATANODE_REPLICATE_PORT") + "...")
+	println("Replicate File Transfer Server started. Listening on port " + strconv.Itoa(int(port)) + "...")
 
 	for {
 		conn, err := listener.Accept()
@@ -211,12 +227,23 @@ func main() {
 
 	md := metadata.Pairs("nodeName", name)
 	ctx = metadata.NewOutgoingContext(context.Background(), md)
+	clientPorts := GetClientTransferPorts()
+	replicatePorts := GetReplicateTransferPorts()
 
-	mainBorder.Add(4)
+
+	mainBorder.Add(2)
 	go StartDatanodeServices()
 	go ConnectToMasterServices()
-	go ListenToClientFileTransfer()
-	go ListenToReplicateFileTransfer()
+
+	for _, port := range clientPorts {
+		mainBorder.Add(1)
+		go ListenToClientFileTransfer(port)
+	}
+
+	for _, port := range replicatePorts {
+		mainBorder.Add(1)
+		go ListenToReplicateFileTransfer(port)
+	}
 	mainBorder.Wait()
 
 }
