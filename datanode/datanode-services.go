@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
 	"log"
 	"net"
@@ -29,9 +30,12 @@ func (s *DataNode2MasterServer) ReplicateTo(ctx context.Context, req *Services.R
 			conn.Close()
 			return &Services.ReplicateResponse{Ok: false}, err
 		}
-	
+
+		reader := bufio.NewReader(conn)
+		writer := bufio.NewWriter(conn)
+		
 		path := "fs/" + req.Filename
-		done, _ := Utils.WriteFileToNetwork(path, &conn, true, false)
+		done, _ := Utils.WriteFileToNetwork(path, reader, writer, true, false)
 		if !done {
 			fmt.Println("Error While Replicating File")
 			conn.Close()

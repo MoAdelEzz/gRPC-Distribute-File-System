@@ -1,12 +1,14 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"log"
 	"net"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -29,20 +31,20 @@ var masterTrackerBorder sync.WaitGroup
 func RangedList(start int, count int) []int32 {
 	result := []int32{}
 	for i := start; i < start+count; i++ {
-		result = append(result, int32(i))		
+		result = append(result, int32(i))
 	}
 	return result
 }
 
 func GetClientTransferPorts() []int32 {
 	fileTransferPortsStart, _ := strconv.Atoi(os.Getenv("DATANODE_FILE_TRANSFER_START_PORT"))
-	fileTransferPortCount, _  := strconv.Atoi(os.Getenv("DATANODE_FILE_TRANSFER_PORT_COUNT"))
+	fileTransferPortCount, _ := strconv.Atoi(os.Getenv("DATANODE_FILE_TRANSFER_PORT_COUNT"))
 	return RangedList(fileTransferPortsStart, fileTransferPortCount)
 }
 
 func GetReplicateTransferPorts() []int32 {
-	replicatePortStart, _  := strconv.Atoi(os.Getenv("DATANODE_REPLICATE_START_PORT"))
-	replicatePortCount, _  := strconv.Atoi(os.Getenv("DATANODE_REPLICATE_PORT_COUNT"))
+	replicatePortStart, _ := strconv.Atoi(os.Getenv("DATANODE_REPLICATE_START_PORT"))
+	replicatePortCount, _ := strconv.Atoi(os.Getenv("DATANODE_REPLICATE_PORT_COUNT"))
 	return RangedList(replicatePortStart, replicatePortCount)
 }
 
@@ -53,7 +55,7 @@ func KeepalivePing(ctx context.Context, master *Services.Master2DatakeeperServic
 
 	for {
 		_, err := (*master).HeartBeat(ctx, &Services.HeartBeatRequest{
-			Filesystem:    filesystem,
+			Filesystem:     filesystem,
 			ClientsPorts:   GetClientTransferPorts(),
 			ReplicatePorts: GetReplicateTransferPorts(),
 		})
@@ -65,9 +67,9 @@ func KeepalivePing(ctx context.Context, master *Services.Master2DatakeeperServic
 		time.Sleep(time.Second)
 	}
 }
-func HandleFileUpload(conn net.Conn) bool {
-	// Reading The File From Network
-	done, filename, byteCount := Utils.ReadFileFromNetwork("", &conn, "fs", false)
+func HandleFileUpload(reader *bufio.Reader, writer *bufio.Writer) bool {
+	// Reading The File From Network	
+	done, filename, byteCount := Utils.ReadFileFromNetwork("", reader, writer, "fs", false)
 	if !done {
 		fmt.Println("Error While Receiving File, Aborting Transfer")
 		AbortFileTransfer(filename)
@@ -81,25 +83,22 @@ func HandleFileUpload(conn net.Conn) bool {
 	fmt.Printf("Registered file '%v' with master\n", filename)
 
 	if err != nil || !resp.Ok {
-		Utils.WriteChunckToNetwork(&conn, []byte("ERROR"))
+		Utils.WriteChunckToNetwork(writer, []byte("ERROR"))
 		println("Failed")
 		return false
 	} else {
-		Utils.WriteChunckToNetwork(&conn, []byte("OK"))
+		Utils.WriteChunckToNetwork(writer, []byte("OK"))
 		AppendFileToSystem(filename, byteCount)
 		println("Ok")
 		return true
 	}
 }
-func HandleFileDownload(conn net.Conn) bool {
-	n, buffer := Utils.ReadChunckFromNetwork(&conn)
-	filename := string(buffer[:n])
+func HandleFileDownload(nodePort int32, reader *bufio.Reader, writer *bufio.Writer) bool {
+	n, buffer, _ := Utils.ReadChunckFromNetwork(reader)
+	filename := strings.TrimSpace(string(buffer[:n]))
 	path := "fs/" + filename
 
-	nodePort := int32(conn.LocalAddr().(*net.TCPAddr).Port)
-	println(nodePort)
-
-	done, _ := Utils.WriteFileToNetwork(path, &conn, false, false)
+	done, _ := Utils.WriteFileToNetwork(path, reader, writer, false, false)
 	if !done {
 		fmt.Println("Error While Sending File")
 		return false
@@ -112,19 +111,26 @@ func HandleFileDownload(conn net.Conn) bool {
 func ClientsFileTransfer(conn net.Conn) bool {
 	defer conn.Close()
 
-	n, buffer := Utils.ReadChunckFromNetwork(&conn)
+	reader := bufio.NewReader(conn)
+	writer := bufio.NewWriter(conn)
+	nodePort := int32(conn.LocalAddr().(*net.TCPAddr).Port)
 
-	if string(buffer[:n]) == "UPLOAD" {
-		return HandleFileUpload(conn)
+	n, buffer, _ := Utils.ReadChunckFromNetwork(reader)
+
+	if strings.TrimSpace(string(buffer[:n])) == "UPLOAD" {
+		return HandleFileUpload(reader, writer)
 	} else {
-		return HandleFileDownload(conn)
+		return HandleFileDownload(nodePort, reader, writer)
 	}
 }
 
 func ReplicateFileTransfer(conn net.Conn) bool {
 	defer conn.Close()
 
-	done, _, _ := Utils.ReadFileFromNetwork("", &conn, "fs", false)
+	reader := bufio.NewReader(conn)
+	writer := bufio.NewWriter(conn)
+
+	done, _, _ := Utils.ReadFileFromNetwork("", reader, writer, "fs", false)
 	if !done {
 		fmt.Println("Error While Sending File")
 		return false
@@ -178,7 +184,7 @@ func StartDatanodeServices() {
 func ListenToClientFileTransfer(port int32) {
 	defer mainBorder.Done()
 
-	listener, err := net.Listen("tcp", ":"+ strconv.Itoa(int(port)))
+	listener, err := net.Listen("tcp", ":"+strconv.Itoa(int(port)))
 	if err != nil {
 		fmt.Println(err)
 		return
@@ -199,7 +205,7 @@ func ListenToClientFileTransfer(port int32) {
 func ListenToReplicateFileTransfer(port int32) {
 	defer mainBorder.Done()
 
-	listener, err := net.Listen("tcp", ":"+ strconv.Itoa(int(port)))
+	listener, err := net.Listen("tcp", ":"+strconv.Itoa(int(port)))
 	if err != nil {
 		fmt.Println(err)
 		return
@@ -231,7 +237,6 @@ func main() {
 	ctx = metadata.NewOutgoingContext(context.Background(), md)
 	clientPorts := GetClientTransferPorts()
 	replicatePorts := GetReplicateTransferPorts()
-
 
 	mainBorder.Add(2)
 	go StartDatanodeServices()

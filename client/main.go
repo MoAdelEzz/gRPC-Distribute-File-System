@@ -1,11 +1,13 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"log"
 	"net"
 	"os"
+	"strings"
 
 	Utils "MoA/Distubted-File-System"
 	Services "MoA/Distubted-File-System/services"
@@ -75,10 +77,13 @@ func UploadFile(path string) bool {
 	}
 	defer conn.Close()
 
-	Utils.WriteChunckToNetwork(&conn, []byte("UPLOAD"))
+	reader := bufio.NewReader(conn)
+	writer := bufio.NewWriter(conn)
+
+	Utils.WriteChunckToNetwork(writer, []byte("UPLOAD"))
 
 	// Writing File To Network
-	done, _ := Utils.WriteFileToNetwork(path, &conn, true, true)
+	done, _ := Utils.WriteFileToNetwork(path, reader, writer, true, true)
 	if !done {
 		fmt.Println("Error While Receiving File")
 		return false
@@ -90,9 +95,9 @@ func UploadFile(path string) bool {
 
 	// waiting the data keeper to register the file transfer for the master tracker
 	// keep reading untill the buffer value is changed by the other node
-	n, buffer := Utils.ReadChunckFromNetwork(&conn)
+	n, buffer, _ := Utils.ReadChunckFromNetwork(reader)
 	message := string(buffer[:n])
-	if message == "OK" {
+	if strings.TrimSpace(message) == "OK" {
 		fmt.Println("File uploaded successfully")
 	} else {
 		fmt.Println("Error: ", message)
@@ -116,11 +121,14 @@ func DownloadFile(name string) bool {
 	}
 	defer conn.Close()
 
-	Utils.WriteChunckToNetwork(&conn, []byte("DOWNLOAD"))
-	Utils.WriteChunckToNetwork(&conn, []byte(name))
+	reader := bufio.NewReader(conn)
+	writer := bufio.NewWriter(conn)
+
+	Utils.WriteChunckToNetwork(writer, []byte("DOWNLOAD"))
+	Utils.WriteChunckToNetwork(writer, []byte(name))
 
 	// Writing File To Network
-	done, _, _ := Utils.ReadFileFromNetwork(name, &conn, "download", true)
+	done, _, _ := Utils.ReadFileFromNetwork(name, reader, writer, "download", true)
 	return done
 }
 
