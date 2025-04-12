@@ -89,7 +89,7 @@ func GetSuitableMachine(filename string, fileSize int) (string, string) {
 		node.mutex.Lock()
 			// TODO: change this
 			if fileSize >= 0 {
-				port := GetRandomPort(ip, "CLIENT")
+				port := GetRandomPort(ip, "CLIENT")	
 				if port != "" {
 					node.mutex.Unlock()
 					return ip, port
@@ -117,6 +117,13 @@ func RegisterFileReplicateStart(toAddresses []string, filename string) {
 			activeMachines[ip].ongoungReplicates[filename] = port
 		activeMachines[ip].mutex.Unlock()
 	}
+}
+
+func RegisterDownloadComplete(nodeAddress string, port string) {
+	ip, _ := ResolveAddress(nodeAddress)
+	activeMachines[ip].mutex.Lock()
+		activeMachines[ip].busyPorts[port] = false
+	activeMachines[ip].mutex.Unlock()
 }
 
 func RegisterFileTransferComplete(nodeAddress string, filename string) {
@@ -260,8 +267,20 @@ func GetSourceMachine(filename string) (string, string) {
 	}
 
 	for ip, _ := range fileTable[filename] {
+		activeMachines[ip].mutex.Lock()
+		// to handle ghosted machines before the daemon capture them so we ignore them here
+		if activeMachines[ip].last_seen.Before(time.Now().Add(- 5 *time.Second)) {
+			activeMachines[ip].mutex.Unlock()
+			continue
+		}
+		activeMachines[ip].mutex.Unlock()
+
 		port := GetRandomPort(ip, "CLIENT")
+
 		if port != "" {
+			activeMachines[ip].mutex.Lock()
+				activeMachines[ip].busyPorts[port] = true
+			activeMachines[ip].mutex.Unlock()
 			return ip, port
 		}
 	}

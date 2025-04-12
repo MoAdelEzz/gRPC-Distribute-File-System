@@ -19,8 +19,9 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	Master2DatakeeperServices_RegisterFile_FullMethodName = "/DFS.Master2DatakeeperServices/RegisterFile"
-	Master2DatakeeperServices_HeartBeat_FullMethodName    = "/DFS.Master2DatakeeperServices/HeartBeat"
+	Master2DatakeeperServices_RegisterFile_FullMethodName             = "/DFS.Master2DatakeeperServices/RegisterFile"
+	Master2DatakeeperServices_RegisterDownloadComplete_FullMethodName = "/DFS.Master2DatakeeperServices/RegisterDownloadComplete"
+	Master2DatakeeperServices_HeartBeat_FullMethodName                = "/DFS.Master2DatakeeperServices/HeartBeat"
 )
 
 // Master2DatakeeperServicesClient is the client API for Master2DatakeeperServices service.
@@ -28,6 +29,7 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type Master2DatakeeperServicesClient interface {
 	RegisterFile(ctx context.Context, in *RegisterFileRequest, opts ...grpc.CallOption) (*RegisterFileResponse, error)
+	RegisterDownloadComplete(ctx context.Context, in *RegisterDownloadCompleteRequest, opts ...grpc.CallOption) (*RegisterDownloadCompleteResponse, error)
 	HeartBeat(ctx context.Context, in *HeartBeatRequest, opts ...grpc.CallOption) (*HeartBeatResponse, error)
 }
 
@@ -49,6 +51,16 @@ func (c *master2DatakeeperServicesClient) RegisterFile(ctx context.Context, in *
 	return out, nil
 }
 
+func (c *master2DatakeeperServicesClient) RegisterDownloadComplete(ctx context.Context, in *RegisterDownloadCompleteRequest, opts ...grpc.CallOption) (*RegisterDownloadCompleteResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RegisterDownloadCompleteResponse)
+	err := c.cc.Invoke(ctx, Master2DatakeeperServices_RegisterDownloadComplete_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *master2DatakeeperServicesClient) HeartBeat(ctx context.Context, in *HeartBeatRequest, opts ...grpc.CallOption) (*HeartBeatResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(HeartBeatResponse)
@@ -64,6 +76,7 @@ func (c *master2DatakeeperServicesClient) HeartBeat(ctx context.Context, in *Hea
 // for forward compatibility.
 type Master2DatakeeperServicesServer interface {
 	RegisterFile(context.Context, *RegisterFileRequest) (*RegisterFileResponse, error)
+	RegisterDownloadComplete(context.Context, *RegisterDownloadCompleteRequest) (*RegisterDownloadCompleteResponse, error)
 	HeartBeat(context.Context, *HeartBeatRequest) (*HeartBeatResponse, error)
 	mustEmbedUnimplementedMaster2DatakeeperServicesServer()
 }
@@ -77,6 +90,9 @@ type UnimplementedMaster2DatakeeperServicesServer struct{}
 
 func (UnimplementedMaster2DatakeeperServicesServer) RegisterFile(context.Context, *RegisterFileRequest) (*RegisterFileResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method RegisterFile not implemented")
+}
+func (UnimplementedMaster2DatakeeperServicesServer) RegisterDownloadComplete(context.Context, *RegisterDownloadCompleteRequest) (*RegisterDownloadCompleteResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method RegisterDownloadComplete not implemented")
 }
 func (UnimplementedMaster2DatakeeperServicesServer) HeartBeat(context.Context, *HeartBeatRequest) (*HeartBeatResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method HeartBeat not implemented")
@@ -121,6 +137,24 @@ func _Master2DatakeeperServices_RegisterFile_Handler(srv interface{}, ctx contex
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Master2DatakeeperServices_RegisterDownloadComplete_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RegisterDownloadCompleteRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(Master2DatakeeperServicesServer).RegisterDownloadComplete(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Master2DatakeeperServices_RegisterDownloadComplete_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(Master2DatakeeperServicesServer).RegisterDownloadComplete(ctx, req.(*RegisterDownloadCompleteRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _Master2DatakeeperServices_HeartBeat_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(HeartBeatRequest)
 	if err := dec(in); err != nil {
@@ -149,6 +183,10 @@ var Master2DatakeeperServices_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "RegisterFile",
 			Handler:    _Master2DatakeeperServices_RegisterFile_Handler,
+		},
+		{
+			MethodName: "RegisterDownloadComplete",
+			Handler:    _Master2DatakeeperServices_RegisterDownloadComplete_Handler,
 		},
 		{
 			MethodName: "HeartBeat",

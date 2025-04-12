@@ -14,6 +14,16 @@ message RegisterFileResponse {
 
 // ==================================================
 
+message RegisterDownloadCompleteRequest {
+    string port = 1;
+}
+
+message RegisterDownloadCompleteResponse {
+    bool ok = 1;
+}
+
+// ==================================================
+
 message FileInfo {
     string filename = 1;
     int32 sizeInBytes = 2;
@@ -34,5 +44,6 @@ message HeartBeatResponse {
 
 service Master2DatakeeperServices {
     rpc RegisterFile ( RegisterFileRequest ) returns ( RegisterFileResponse );
+    rpc RegisterDownloadComplete ( RegisterDownloadCompleteRequest ) returns ( RegisterDownloadCompleteResponse );
     rpc HeartBeat    ( HeartBeatRequest )    returns ( HeartBeatResponse) {}
 }

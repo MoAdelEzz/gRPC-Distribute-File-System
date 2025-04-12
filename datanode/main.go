@@ -68,41 +68,43 @@ func KeepalivePing(ctx context.Context, master *Services.Master2DatakeeperServic
 func HandleFileUpload(conn net.Conn) bool {
 	// Reading The File From Network
 	done, filename, byteCount := Utils.ReadFileFromNetwork("", &conn, "fs", false)
-
 	if !done {
-		fmt.Println("Error While Receiving File")
+		fmt.Println("Error While Receiving File, Aborting Transfer")
+		AbortFileTransfer(filename)
 		return false
+	} else {
+		fmt.Printf("Received file '%v' of size %v bytes\n", filename, byteCount)
 	}
 
 	// update the master tracker
 	resp, err := MasterServices.RegisterFile(ctx, &Services.RegisterFileRequest{Filename: filename})
-	// TODO: revise this
-	// notify the client
+	fmt.Printf("Registered file '%v' with master\n", filename)
+
 	if err != nil || !resp.Ok {
-		conn.Write([]byte("ERROR"))
-		conn.Read([]byte{})
-		fmt.Println(err)
+		Utils.WriteChunckToNetwork(&conn, []byte("ERROR"))
+		println("Failed")
 		return false
 	} else {
-		println("here")
-		conn.Write([]byte("OK"))
-		conn.Read([]byte{})
+		Utils.WriteChunckToNetwork(&conn, []byte("OK"))
+		AppendFileToSystem(filename, byteCount)
+		println("Ok")
+		return true
 	}
-
-	// Update The Lookup Table
-	AppendFileToSystem(filename, byteCount)
-
-	return true
 }
 func HandleFileDownload(conn net.Conn) bool {
 	n, buffer := Utils.ReadChunckFromNetwork(&conn)
 	filename := string(buffer[:n])
 	path := "fs/" + filename
 
+	nodePort := int32(conn.LocalAddr().(*net.TCPAddr).Port)
+	println(nodePort)
+
 	done, _ := Utils.WriteFileToNetwork(path, &conn, false, false)
 	if !done {
 		fmt.Println("Error While Sending File")
 		return false
+	} else {
+		MasterServices.RegisterDownloadComplete(ctx, &Services.RegisterDownloadCompleteRequest{Port: strconv.Itoa(int(nodePort))})
 	}
 
 	return true

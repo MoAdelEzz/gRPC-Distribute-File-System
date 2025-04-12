@@ -55,7 +55,17 @@ func GetDatanodeAddress(mode string, filepath string) string {
 	}
 }
 
+func CheckFileExists(path string) bool {
+	_, err := os.Stat(path)
+	return !os.IsNotExist(err)
+}
+
 func UploadFile(path string) bool {
+	if !CheckFileExists(path) {
+		fmt.Println("File does not exist")
+		return false
+	}
+
 	// selecting a proper machine from the master tracker
 	address := GetDatanodeAddress("upload", path)
 	conn, err := net.Dial("tcp", address)
@@ -72,9 +82,14 @@ func UploadFile(path string) bool {
 	if !done {
 		fmt.Println("Error While Receiving File")
 		return false
+	} else {
+		fmt.Println("File uploaded successfully")
 	}
 	
+	fmt.Println("Waiting for the datanode to register the file...")
+
 	// waiting the data keeper to register the file transfer for the master tracker
+	// keep reading untill the buffer value is changed by the other node
 	n, buffer := Utils.ReadChunckFromNetwork(&conn)
 	message := string(buffer[:n])
 	if message == "OK" {

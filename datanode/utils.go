@@ -60,18 +60,25 @@ func AppendFileToSystem(name string, size int) {
 func GetFileTransferState(name string) *Services.FileTransferStateResponse {
 	transfersBorder.Add(1)
 	defer transfersBorder.Done()
-
 	if _, ok := ongoingTransfers[name]; !ok {
 		return &Services.FileTransferStateResponse{Status: string(ongoingTransfers[name])}
+	} else if _, exist := filesystem[name]; !exist {
+		return &Services.FileTransferStateResponse{Status: string(Utils.ABORTED)}
+	} else {
+		return &Services.FileTransferStateResponse{Status: string(Utils.RESIDENT)}
 	}
-
-	return &Services.FileTransferStateResponse{Status: string(Utils.RESIDENT)}
 }
 
 func AbortFileTransfer(name string) {
 	transfersBorder.Add(1)
-	defer transfersBorder.Done()
+	log.Printf("Aborting file transfer: %v", name)
 	ongoingTransfers[name] = Utils.ABORTED
+	delete(filesystem, name)
+	err := os.Remove(filepath.Join("fs", name))
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer transfersBorder.Done()
 }
 
 func IsFileExists(filename string) bool {

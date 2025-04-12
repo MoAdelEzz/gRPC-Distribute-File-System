@@ -10,3 +10,6 @@ download/temp2.txt
 *.mp4
 gRPC-Distribute-File-System.7z
 out/client.exe
+ReadChunck.log
+WriteChunck.log
+download/cat.mp4

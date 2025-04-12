@@ -95,8 +95,8 @@ func FileReader(filePath string, chunkSize int) (func() ([]byte, error), func())
 // ================= Network Utilities =============================
 // =================================================================
 
-
-func ReadChunckFromNetwork(conn *net.Conn) (int, []byte) {
+func ReadChunckFromNetwork(conn *net.Conn, exclude ...string ) (int, []byte) {
+	
 	chunckSize, _ := strconv.Atoi(os.Getenv("CHUNK_SIZE"))
 	buffer := make([]byte, chunckSize)
 	n, err := (*conn).Read(buffer)
@@ -125,7 +125,7 @@ func WriteChunckToNetwork(conn *net.Conn, buffer []byte) int {
 	if err != nil {
 		fmt.Println(err)
 		return -1
-	}	
+	}
 	return n
 }
 
@@ -141,21 +141,21 @@ func ReadFileFromNetwork(filename string, conn *net.Conn, folder string, showPro
 
 	n, buffer := ReadChunckFromNetwork(conn)
 	if buffer == nil {
-		return false, "", -1
+		return false, filename, -1
 	}
 
 	fileSize, _ := strconv.Atoi(string(buffer[:n]))
 
 	done := MakeDirIfNotExists(folder)
 	if !done {
-		return false, "", -1
+		return false, filename, -1
 	}
 
 	file, err := os.Create(folder + "/" + filename)
 	if err != nil {
 		fmt.Println("OS Error")
 		fmt.Println(err)
-		return false, "", -1
+		return false, filename, -1
 	}
 	defer file.Close()
 
@@ -170,7 +170,7 @@ func ReadFileFromNetwork(filename string, conn *net.Conn, folder string, showPro
 	for {
 		n, buffer := ReadChunckFromNetwork(conn)
 		if buffer == nil {
-			return false, "", -1
+			return false, filename, -1
 		}
 
 		message := string(buffer[:n])
@@ -198,8 +198,7 @@ func WriteFileToNetwork(path string, conn *net.Conn, sendName bool, showProgress
 	}
 
 	fileInfo, _ := file.Stat()
-	
-	if ! TryWriteChunckToNetwork(conn, []byte(strconv.Itoa(int(fileInfo.Size())))) {
+	if !TryWriteChunckToNetwork(conn, []byte(strconv.Itoa(int(fileInfo.Size())))) {
 		return false, -1;
 	}
 
@@ -228,7 +227,6 @@ func WriteFileToNetwork(path string, conn *net.Conn, sendName bool, showProgress
 			}
 			return false, byteWritten
 		}
-
 
 		if n := WriteChunckToNetwork(conn, buffer); n == -1 {
 			return false, byteWritten

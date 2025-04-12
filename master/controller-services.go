@@ -24,6 +24,18 @@ func (s *Master2DataNodeServer) RegisterFile(ctx context.Context, req *Services.
 	return &Services.RegisterFileResponse{Ok: true}, nil
 }
 
+func (s *Master2DataNodeServer) RegisterDownloadComplete(ctx context.Context, req *Services.RegisterDownloadCompleteRequest) (*Services.RegisterDownloadCompleteResponse, error) {
+	p, ok := peer.FromContext(ctx)
+	_, ok2 := metadata.FromIncomingContext(ctx)
+	if ok && ok2 {
+		log.Printf("Received Download Register Request from %v with port %v", p.Addr.String(), req.Port)
+		RegisterDownloadComplete(p.Addr.String(), req.Port)
+	}
+
+	return &Services.RegisterDownloadCompleteResponse{Ok: true}, nil
+}
+
+
 func (s *Master2DataNodeServer) HeartBeat(ctx context.Context, req *Services.HeartBeatRequest) (*Services.HeartBeatResponse, error) {
 	p, ok := peer.FromContext(ctx)
 	if ok {
