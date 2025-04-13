@@ -364,6 +364,10 @@ func GetMachineToReplicate(filename string) (Services.DatakeeperServicesClient, 
 				continue
 			}
 
+			activeMachines[ip].mutex.Lock()
+				activeMachines[ip].busyPorts[port] = true
+			activeMachines[ip].mutex.Unlock()
+
 			fmt.Printf("selected port %v for machine %v\n", port, ip)
 			
 			toMachines = append(toMachines, ip+":"+port)
