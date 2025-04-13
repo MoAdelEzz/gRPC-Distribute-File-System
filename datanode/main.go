@@ -130,9 +130,10 @@ func ReplicateFileTransfer(conn net.Conn) bool {
 	reader := bufio.NewReader(conn)
 	writer := bufio.NewWriter(conn)
 
-	done, _, _ := Utils.ReadFileFromNetwork("", reader, writer, "fs", false)
+	done, filename, _ := Utils.ReadFileFromNetwork("", reader, writer, "fs", false)
 	if !done {
-		fmt.Println("Error While Sending File")
+		fmt.Println("Error While Reciving Replicated File File")
+		os.Remove("fs/" + filename)
 		return false
 	}
 

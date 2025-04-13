@@ -176,7 +176,13 @@ func ReadFileFromNetwork(filename string, reader *bufio.Reader, writer *bufio.Wr
 	for fileSize > 0 {
 		toRead := min(fileSize, CHUNK_SIZE)
 		buffer := make([]byte, toRead) 
-		io.ReadFull(reader, buffer)
+		_, err = io.ReadFull(reader, buffer)
+
+		if err != nil {
+			os.Remove(folder + "/" + filename)
+			return false, filename, -1
+		}
+
 		file.Write( buffer )
 		fileSize -= toRead
 		byteCount += toRead
