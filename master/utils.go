@@ -112,6 +112,8 @@ func RegisterFileTransferStart(ip string, port string, filename string) {
 func RegisterFileReplicateStart(toAddresses []string, filename string) {
 	for _, address := range toAddresses {
 		ip, port := ResolveAddress(address)
+		fmt.Println("Replicating to IP:", ip, "on port:", port)
+
 		activeMachines[ip].mutex.Lock()
 			activeMachines[ip].busyPorts[port] = true
 			activeMachines[ip].ongoungReplicates[filename] = port
@@ -155,8 +157,16 @@ func RegisterReplicateComplete(nodeAddresses []string, filename string) {
 	}
 }
 
-func AbortReplicate(ips []string, filename string) {
-	for _, ip := range ips {
+func AbortReplicate(machineAddresses []string, filename string) {
+	for _, address := range(machineAddresses) {
+		ip, _ := ResolveAddress(address)
+		fmt.Println("Aborting replication on machine with ip ", ip)
+
+		_, stillAlive := activeMachines[ip]
+		if !stillAlive {
+			continue
+		}
+		
 		activeMachines[ip].mutex.Lock()
 			activeMachines[ip].busyPorts[activeMachines[ip].ongoungReplicates[filename]] = false
 			delete(activeMachines[ip].ongoungReplicates, filename)
@@ -338,6 +348,10 @@ func GetMachineToReplicate(filename string) (Services.DatakeeperServicesClient, 
 		}
 	}
 
+	if numOfReplicas <= 0 {
+		return nil, []string{}
+	}
+
 	toMachines := []string{}
 
 	for ip, _ := range activeMachines {
@@ -346,11 +360,19 @@ func GetMachineToReplicate(filename string) (Services.DatakeeperServicesClient, 
 			continue
 		} else {
 			port := GetRandomPort(ip, "REPLICATE")
+			if port == "" {
+				continue
+			}
+
+			fmt.Printf("selected port %v for machine %v\n", port, ip)
+			
 			toMachines = append(toMachines, ip+":"+port)
-			if len(toMachines) >= numOfReplicas {
-				return from, toMachines
+			if len(toMachines) == numOfReplicas {
+				break
 			}
 		}
 	}
-	return nil, []string{}
+
+	return from, toMachines
+
 }

@@ -101,7 +101,8 @@ func ReplicateFiles() {
 
 		for _, file := range filesToReplicate {
 			fromMachine, toMachines := GetMachineToReplicate(file)
-			if fromMachine == nil {
+
+			if len(toMachines) == 0 {
 				println("No Available Machine To Replicate To")
 				break
 			}

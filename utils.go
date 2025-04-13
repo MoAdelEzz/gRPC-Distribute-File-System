@@ -179,6 +179,7 @@ func ReadFileFromNetwork(filename string, reader *bufio.Reader, writer *bufio.Wr
 		io.ReadFull(reader, buffer)
 		file.Write( buffer )
 		fileSize -= toRead
+		byteCount += toRead
 
 		if showProgress {
 			bar.Add(toRead)
@@ -203,7 +204,8 @@ func WriteFileToNetwork(path string, reader *bufio.Reader, writer *bufio.Writer,
 	
 	fmt.Println("file: ", filepath.Base(path), " is being uploaded")
 
-	n, err := io.Copy(writer, file)
+	bar := progressbar.DefaultBytes(fileInfo.Size(), "uploading " + filepath.Base(path))
+	n, err := io.Copy(io.MultiWriter(writer, bar), file)
 	if err != nil {
 		return false, 0
 	}

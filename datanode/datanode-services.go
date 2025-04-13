@@ -27,7 +27,6 @@ func (s *DataNode2MasterServer) ReplicateTo(ctx context.Context, req *Services.R
 		conn, err := net.Dial("tcp", MachineAddress)
 		if err != nil {
 			fmt.Println("did not connect:", err)
-			conn.Close()
 			return &Services.ReplicateResponse{Ok: false}, err
 		}
 
