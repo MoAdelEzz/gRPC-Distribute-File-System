@@ -4,6 +4,8 @@ This project implements a distributed file system with a master-datanode archite
 
 ##   Architecture
 
+<img width="629" height="303" alt="image" src="https://github.com/user-attachments/assets/7a8a6f07-5bed-4c7d-a769-8a7acd4b6471" />
+
 The system uses a master-datanode architecture with the following components:
 
 * **Master:** Manages file system metadata and coordinates datanode activities.
